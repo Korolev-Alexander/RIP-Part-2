@@ -106,7 +106,7 @@ func main() {
 
 	for _, s := range services {
 		// Генерируем MinIO URL для картинки
-		imageURL := fmt.Sprintf("http://localhost:9000/images/%s", s.image)
+		imageURL := fmt.Sprintf("http://localhost:9000/image/%s", s.image)
 
 		_, err := db.Exec(`
 			INSERT INTO services (name, model, avg_data_rate, data_per_hour, image_url, description, description_all, protocol, created_at) 
