@@ -30,7 +30,8 @@ func main() {
 			http.Redirect(w, r, "/smart-devices", http.StatusSeeOther)
 			return
 		}
-		http.NotFound(w, r)
+		// Для всех остальных несуществующих маршрутов - 404
+		handlers.Show404Page(w, "Страница не найдена")
 	})
 
 	// Маршруты по ТЗ
@@ -42,6 +43,9 @@ func main() {
 	http.HandleFunc("/smart-cart/add", handlers.AddToSmartCartHandler)
 	http.HandleFunc("/smart-cart/delete", handlers.DeleteSmartCartHandler)
 	http.HandleFunc("/smart-cart/count", handlers.GetSmartCartCountHandler)
+
+	// Просмотр заявки по ID
+	http.HandleFunc("/request/", handlers.RequestByIDHandler)
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	http.ListenAndServe(":8080", nil)

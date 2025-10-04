@@ -16,6 +16,7 @@ var (
 	tmplSmartDevices      = template.Must(template.ParseFiles("templates/layout.html", "templates/smart_devices.html"))
 	tmplSmartDeviceDetail = template.Must(template.ParseFiles("templates/layout.html", "templates/smart_device_detail.html"))
 	tmplSmartCart         = template.Must(template.ParseFiles("templates/layout.html", "templates/smart_cart.html"))
+	tmpl404               = template.Must(template.ParseFiles("templates/404.html"))
 )
 
 func Init(database *gorm.DB) {
@@ -43,7 +44,60 @@ func calculateTotalTraffic(requestID uint) float64 {
 		Where("request_services.request_id = ?", requestID).
 		Scan(&total)
 
+	log.Printf("🔄 Расчет трафика для заявки %d: %.2f Кб/ч", requestID, total)
 	return total
+}
+
+// Вспомогательная функция для показа 404 страницы
+func Show404Page(w http.ResponseWriter, message string) {
+	w.WriteHeader(http.StatusNotFound)
+	tmpl404.Execute(w, map[string]string{
+		"ErrorMessage": message,
+	})
+}
+
+// GET /request/{id} - просмотр заявки по ID
+func RequestByIDHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Path[len("/request/"):]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		Show404Page(w, "Неверный ID заявки")
+		return
+	}
+
+	var request models.Request
+	var items []models.RequestService
+
+	// Ищем заявку по ID
+	result := db.Preload("Client").First(&request, id)
+	if result.Error != nil {
+		Show404Page(w, "Заявка не найдена")
+		return
+	}
+
+	// ЕСЛИ ЗАЯВКА УДАЛЕНА - ПОКАЗЫВАЕМ 404
+	if request.Status == "deleted" {
+		Show404Page(w, "Заявка была удалена")
+		return
+	}
+
+	// Загружаем товары в заявке
+	db.Preload("Service").Where("request_id = ?", request.ID).Find(&items)
+
+	// РАССЧИТЫВАЕМ ОБЩИЙ ТРАФИК
+	request.TotalTraffic = calculateTotalTraffic(request.ID)
+
+	err = tmplSmartCart.ExecuteTemplate(w, "layout.html", map[string]interface{}{
+		"Request":   request,
+		"Items":     items,
+		"ShowCart":  false,
+		"CartCount": getSmartCartCount(1),
+	})
+
+	if err != nil {
+		log.Printf("❌ Template error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // GET /smart-devices - поиск устройств через GORM
@@ -111,14 +165,22 @@ func SmartCartHandler(w http.ResponseWriter, r *http.Request) {
 	var request models.Request
 	var items []models.RequestService
 
-	db.Preload("Client").Where("status = ? AND client_id = ?", "draft", 1).First(&request)
+	result := db.Preload("Client").Where("status = ? AND client_id = ?", "draft", 1).First(&request)
 
-	if request.ID != 0 {
-		db.Preload("Service").Where("request_id = ?", request.ID).Find(&items)
-
-		// РАССЧИТЫВАЕМ ОБЩИЙ ТРАФИК
-		request.TotalTraffic = calculateTotalTraffic(request.ID)
+	// ЕСЛИ ЧЕРНОВИКА НЕТ - ПОКАЗЫВАЕМ 404
+	if result.Error != nil {
+		Show404Page(w, "Корзина пуста. Добавьте устройства из каталога.")
+		return
 	}
+
+	// Загружаем товары в заявке
+	db.Preload("Service").Where("request_id = ?", request.ID).Find(&items)
+
+	// ВСЕГДА ПЕРЕСЧИТЫВАЕМ ТРАФИК ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
+	request.TotalTraffic = calculateTotalTraffic(request.ID)
+
+	log.Printf("📱 Загрузка корзины ID %d: %d товаров, трафик: %.2f Кб/ч",
+		request.ID, len(items), request.TotalTraffic)
 
 	err := tmplSmartCart.ExecuteTemplate(w, "layout.html", map[string]interface{}{
 		"Request":   request,
@@ -165,6 +227,7 @@ func AddToSmartCartHandler(w http.ResponseWriter, r *http.Request) {
 			Address:  "ул. Примерная, д. 1, кв. 5",
 		}
 		db.Create(&request)
+		log.Printf("📝 Создана новая корзина ID: %d", request.ID)
 	}
 
 	// 2. ПРОВЕРЯЕМ, ЕСТЬ ЛИ УЖЕ ТАКАЯ УСЛУГА В КОРЗИНЕ
@@ -175,6 +238,7 @@ func AddToSmartCartHandler(w http.ResponseWriter, r *http.Request) {
 		// УСЛУГА УЖЕ ЕСТЬ - УВЕЛИЧИВАЕМ КОЛИЧЕСТВО
 		existingRequestService.Quantity++
 		db.Save(&existingRequestService)
+		log.Printf("➕ Увеличено количество услуги %d в корзине %d: %d шт.", sID, request.ID, existingRequestService.Quantity)
 	} else {
 		// УСЛУГИ НЕТ - СОЗДАЕМ НОВУЮ
 		requestService := models.RequestService{
@@ -183,9 +247,14 @@ func AddToSmartCartHandler(w http.ResponseWriter, r *http.Request) {
 			Quantity:  1,
 		}
 		db.Create(&requestService)
+		log.Printf("🆕 Добавлена услуга %d в корзину %d", sID, request.ID)
 	}
 
-	// 3. РЕДИРЕКТ В КОРЗИНУ
+	// 3. СРАЗУ РАССЧИТЫВАЕМ ТРАФИК
+	totalTraffic := calculateTotalTraffic(request.ID)
+	log.Printf("📊 Общий трафик корзины %d: %.2f Кб/ч", request.ID, totalTraffic)
+
+	// 4. РЕДИРЕКТ В КОРЗИНУ
 	http.Redirect(w, r, "/smart-cart", http.StatusSeeOther)
 }
 
