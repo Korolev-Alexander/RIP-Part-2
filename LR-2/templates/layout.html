@@ -8,23 +8,16 @@
 <body>
     <header>
         <a href="/devices" class="nav-btn">Главная</a>
-        <!-- ИСПРАВИЛ: убрал слеш -->
+        <!-- Показываем корзину только если ShowCart = true -->
+        {{if .ShowCart}}
         <a href="/request" class="nav-btn cart-btn">
             Корзина
-            <span class="cart-count" id="cartCount">0</span>
+            <span class="cart-count">{{.CartCount}}</span>
         </a>
+        {{end}}
     </header>
     <main>
         {{block "content" .}}{{end}}
     </main>
-
-    <script>
-        // Обновляем счетчик корзины
-        fetch('/request/count')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('cartCount').textContent = data.count;
-            });
-    </script>
 </body>
 </html>

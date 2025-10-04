@@ -18,32 +18,10 @@
             <div class="item-info">
                 <h3>{{.Service.Name}}</h3>
                 <p>{{.Service.Model}}</p>
-                <p>Трафик: {{.Service.DataPerHour}} Кб/ч</p>
+                <p>Трафик устройства: {{.Service.DataPerHour}} Кб/ч</p>
             </div>
             <div class="item-quantity">
-                <div class="quantity-control">
-                    <button class="qty-btn minus">-</button>
-                    <span class="qty-value">{{.Quantity}}</span>
-                    <button class="qty-btn plus">+</button>
-                </div>
                 <span>Количество: {{.Quantity}}</span>
-                
-                <!-- УПРОСТИЛ расчет трафика -->
-                <div class="traffic-calculation">
-                    <div class="traffic-line">
-                        <span>Трафик устройства:</span>
-                        <span class="traffic-number">{{.Service.DataPerHour}} Kб/ч</span>
-                    </div>
-                    <div class="traffic-line">
-                        <span>× количество:</span>
-                        <span class="traffic-number">{{.Quantity}}</span>
-                    </div>
-                    <div class="traffic-line total">
-                        <span>Итого:</span>
-                        <!-- УБРАЛ функцию multiply, просто показываем расчет -->
-                        <span class="traffic-number">{{.Service.DataPerHour}} × {{.Quantity}} Kб/ч</span>
-                    </div>
-                </div>
             </div>
         </div>
         {{end}}
@@ -56,7 +34,7 @@
         </form>
         <div class="traffic-result">
             <span>Общий объем трафика:</span>
-            <span class="traffic-value">{{.Request.TotalTraffic}} Kб/ч</span>
+            <span class="traffic-value">{{printf "%.2f" .Request.TotalTraffic}} Kб/ч</span>
         </div>
     </div>
     {{else}}
@@ -67,10 +45,4 @@
     </div>
     {{end}}
 </div>
-
-<script>
-function changeQuantity(serviceId, delta) {
-    alert('Изменение количества: услуга ' + serviceId + ', изменение: ' + delta);
-}
-</script>
 {{end}}

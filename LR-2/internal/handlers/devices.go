@@ -22,6 +22,30 @@ func Init(database *gorm.DB) {
 	db = database
 }
 
+// Вспомогательная функция для получения количества товаров
+func getCartCount(clientID uint) int64 {
+	var count int64
+	db.Model(&models.RequestService{}).
+		Joins("JOIN requests ON requests.id = request_services.request_id").
+		Where("requests.client_id = ? AND requests.status = ?", clientID, "draft").
+		Count(&count)
+	return count
+}
+
+// Вспомогательная функция для расчета общего трафика
+func calculateTotalTraffic(requestID uint) float64 {
+	var total float64
+
+	// Суммируем трафик всех устройств в заявке
+	db.Model(&models.RequestService{}).
+		Select("SUM(services.data_per_hour * request_services.quantity)").
+		Joins("JOIN services ON services.id = request_services.service_id").
+		Where("request_services.request_id = ?", requestID).
+		Scan(&total)
+
+	return total
+}
+
 // GET /devices - поиск услуг через GORM
 func DevicesHandler(w http.ResponseWriter, r *http.Request) {
 	search := r.URL.Query().Get("search")
@@ -40,9 +64,12 @@ func DevicesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := tmplDevices.ExecuteTemplate(w, "layout.html", map[string]interface{}{
-		"Devices": services,
-		"Search":  search,
+		"Devices":   services,
+		"Search":    search,
+		"ShowCart":  true,            // Показываем корзину в хедере
+		"CartCount": getCartCount(1), // Обновляем счетчик
 	})
+
 	if err != nil {
 		log.Printf("Template error in DevicesHandler: %v", err)
 	}
@@ -67,8 +94,11 @@ func DeviceDetailHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("📱 Device Detail - ID: %d, Name: %s, ImageURL: %s", device.ID, device.Name, device.ImageURL)
 
 	err = tmplDeviceDetail.ExecuteTemplate(w, "layout.html", map[string]interface{}{
-		"Device": device,
+		"Device":    device,
+		"ShowCart":  false,           // НЕ показываем корзину в хедере на странице деталей
+		"CartCount": getCartCount(1), // Обновляем счетчик
 	})
+
 	if err != nil {
 		log.Printf("❌ Template error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -85,12 +115,18 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	if request.ID != 0 {
 		db.Preload("Service").Where("request_id = ?", request.ID).Find(&items)
+
+		// РАССЧИТЫВАЕМ ОБЩИЙ ТРАФИК
+		request.TotalTraffic = calculateTotalTraffic(request.ID)
 	}
 
 	err := tmplRequest.ExecuteTemplate(w, "layout.html", map[string]interface{}{
-		"Request": request,
-		"Items":   items,
+		"Request":   request,
+		"Items":     items,
+		"ShowCart":  false,           // НЕ показываем корзину в хедере (мы уже в корзине)
+		"CartCount": getCartCount(1), // Обновляем счетчик
 	})
+
 	if err != nil {
 		log.Printf("❌ Template error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -110,8 +146,46 @@ func AddToRequestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Заглушка для демонстрации
-	log.Printf("➕ Add to cart: service_id=%s", serviceID)
+	// КОНВЕРТИРУЕМ ID
+	sID, err := strconv.Atoi(serviceID)
+	if err != nil {
+		http.Error(w, "Invalid service ID", http.StatusBadRequest)
+		return
+	}
+
+	// 1. НАХОДИМ ИЛИ СОЗДАЕМ ЧЕРНОВУЮ ЗАЯВКУ
+	var request models.Request
+	result := db.Where("status = ? AND client_id = ?", "draft", 1).First(&request)
+
+	if result.Error != nil {
+		// СОЗДАЕМ НОВУЮ ЗАЯВКУ
+		request = models.Request{
+			Status:   "draft",
+			ClientID: 1,
+			Address:  "ул. Примерная, д. 1, кв. 5",
+		}
+		db.Create(&request)
+	}
+
+	// 2. ПРОВЕРЯЕМ, ЕСТЬ ЛИ УЖЕ ТАКАЯ УСЛУГА В ЗАЯВКЕ
+	var existingRequestService models.RequestService
+	findResult := db.Where("request_id = ? AND service_id = ?", request.ID, sID).First(&existingRequestService)
+
+	if findResult.Error == nil {
+		// УСЛУГА УЖЕ ЕСТЬ - УВЕЛИЧИВАЕМ КОЛИЧЕСТВО
+		existingRequestService.Quantity++
+		db.Save(&existingRequestService)
+	} else {
+		// УСЛУГИ НЕТ - СОЗДАЕМ НОВУЮ
+		requestService := models.RequestService{
+			RequestID: request.ID,
+			ServiceID: uint(sID),
+			Quantity:  1,
+		}
+		db.Create(&requestService)
+	}
+
+	// 3. РЕДИРЕКТ В КОРЗИНУ
 	http.Redirect(w, r, "/request", http.StatusSeeOther)
 }
 
@@ -142,7 +216,8 @@ func DeleteRequestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("🗑️ Deleted request: id=%s", requestID)
-	http.Redirect(w, r, "/request", http.StatusSeeOther)
+	// РЕДИРЕКТ НА СТРАНИЦУ УСТРОЙСТВ ПОСЛЕ УДАЛЕНИЯ
+	http.Redirect(w, r, "/devices", http.StatusSeeOther)
 }
 
 // GET /request/count - количество товаров в корзине
