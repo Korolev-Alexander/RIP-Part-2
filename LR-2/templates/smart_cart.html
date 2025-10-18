@@ -13,12 +13,12 @@
         {{range .Items}}
         <div class="request-item">
             <div class="item-image-frame">
-                <img src="{{.Service.ImageURL}}" alt="{{.Service.Name}}" class="item-image">
+                <img src="{{.Device.NamespaceURL}}" alt="{{.Device.Name}}" class="item-image">
             </div>
             <div class="item-info">
-                <h3>{{.Service.Name}}</h3>
-                <p>{{.Service.Model}}</p>
-                <p>Трафик устройства: {{.Service.DataPerHour}} Кб/ч</p>
+                <h3>{{.Device.Name}}</h3>
+                <p>{{.Device.Model}}</p>
+                <p>Трафик устройства: {{.Device.DataPerHour}} Кб/ч</p>
             </div>
             <div class="item-quantity">
                 <span>Количество: {{.Quantity}}</span>
@@ -29,7 +29,7 @@
 
     <div class="calculation-section">
         <form action="/smart-cart/delete" method="POST" style="display: inline;">
-            <input type="hidden" name="request_id" value="{{.Request.ID}}">
+            <input type="hidden" name="order_id" value="{{.Request.ID}}">
             <button type="submit" class="btn-calculate" style="background: #ff4444;">Удалить корзину</button>
         </form>
         <div class="traffic-result">

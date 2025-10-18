@@ -28,46 +28,46 @@ func main() {
 
 	// Очищаем старые данные
 	fmt.Println("🧹 Очищаем старые данные...")
-	db.Exec("DELETE FROM request_services")
-	db.Exec("DELETE FROM requests")
-	db.Exec("DELETE FROM services")
-	db.Exec("DELETE FROM users")
-	db.Exec("ALTER SEQUENCE users_id_seq RESTART WITH 1")
-	db.Exec("ALTER SEQUENCE services_id_seq RESTART WITH 1")
-	db.Exec("ALTER SEQUENCE requests_id_seq RESTART WITH 1")
+	db.Exec("DELETE FROM order_items")
+	db.Exec("DELETE FROM smart_orders")
+	db.Exec("DELETE FROM smart_devices")
+	db.Exec("DELETE FROM clients")
+	db.Exec("ALTER SEQUENCE clients_id_seq RESTART WITH 1")
+	db.Exec("ALTER SEQUENCE smart_devices_id_seq RESTART WITH 1")
+	db.Exec("ALTER SEQUENCE smart_orders_id_seq RESTART WITH 1")
 
-	// 1. Пользователи
-	fmt.Println("👥 Добавляем пользователей...")
+	// 1. Клиенты
+	fmt.Println("👥 Добавляем клиентов...")
 	var clientID, moderatorID int
 	err = db.QueryRow(`
-		INSERT INTO users (username, password, is_moderator, date_joined) 
-		VALUES ('client1', 'pass123', FALSE, $1) 
-		RETURNING id
-	`, time.Now()).Scan(&clientID)
+        INSERT INTO clients (username, password, is_moderator, date_joined)
+        VALUES ('client1', 'pass123', FALSE, $1)
+        RETURNING id
+    `, time.Now()).Scan(&clientID)
 	if err != nil {
 		log.Printf("Ошибка добавления client1: %v", err)
 	}
 
 	err = db.QueryRow(`
-		INSERT INTO users (username, password, is_moderator, date_joined) 
-		VALUES ('moderator1', 'modpass123', TRUE, $1) 
-		RETURNING id
-	`, time.Now()).Scan(&moderatorID)
+        INSERT INTO clients (username, password, is_moderator, date_joined)
+        VALUES ('moderator1', 'modpass123', TRUE, $1)
+        RETURNING id
+    `, time.Now()).Scan(&moderatorID)
 	if err != nil {
 		log.Printf("Ошибка добавления moderator1: %v", err)
 	}
 
-	fmt.Printf("✓ Создан пользователь client1 с ID: %d\n", clientID)
+	fmt.Printf("✓ Создан клиент client1 с ID: %d\n", clientID)
 	fmt.Printf("✓ Создан пользователь moderator1 с ID: %d\n", moderatorID)
 
-	// 2. Услуги (твои устройства из 1 лабы)
-	fmt.Println("💡 Добавляем услуги...")
-	services := []struct {
+	// 2. Умные устройства
+	fmt.Println("💡 Добавляем умные устройства...")
+	devices := []struct {
 		name        string
 		model       string
 		dataRate    float64
 		dataPerHour float64
-		image       string
+		imageFile   string // имя файла картинки
 		description string
 		fullDesc    string
 		protocol    string
@@ -104,61 +104,62 @@ func main() {
 		},
 	}
 
-	for _, s := range services {
+	for _, d := range devices {
 		// Генерируем MinIO URL для картинки
-		imageURL := fmt.Sprintf("http://localhost:9000/image/%s", s.image)
+		namespaceURL := fmt.Sprintf("http://localhost:9000/image/%s", d.imageFile)
 
 		_, err := db.Exec(`
-			INSERT INTO services (name, model, avg_data_rate, data_per_hour, image_url, description, description_all, protocol, created_at) 
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		`, s.name, s.model, s.dataRate, s.dataPerHour, imageURL, s.description, s.fullDesc, s.protocol, time.Now())
+            INSERT INTO smart_devices (name, model, avg_data_rate, data_per_hour, namespace_url, description, description_all, protocol, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, d.name, d.model, d.dataRate, d.dataPerHour, namespaceURL, d.description, d.fullDesc, d.protocol, time.Now())
 
 		if err != nil {
-			log.Printf("Ошибка добавления %s: %v", s.name, err)
+			log.Printf("Ошибка добавления %s: %v", d.name, err)
 		} else {
-			fmt.Printf("✓ Добавлено: %s\n", s.name)
+			fmt.Printf("✓ Добавлено: %s (URL: %s)\n", d.name, namespaceURL)
 		}
 	}
 
 	// 3. Демо-заявка (используем реальный clientID)
 	fmt.Println("📋 Создаем демо-заявку...")
-	var requestID int
+	var orderID int
 	err = db.QueryRow(`
-		INSERT INTO requests (status, client_id, address, created_at) 
-		VALUES ('draft', $1, 'ул. Примерная, д. 1, кв. 5', $2)
-		RETURNING id
-	`, clientID, time.Now()).Scan(&requestID)
+        INSERT INTO smart_orders (status, client_id, address, created_at)
+        VALUES ('draft', $1, 'ул. Примерная, д. 1, кв. 5', $2)
+        RETURNING id
+    `, clientID, time.Now()).Scan(&orderID)
 
 	if err != nil {
 		log.Printf("Ошибка создания заявки: %v", err)
 	} else {
-		fmt.Printf("✓ Создана заявка ID: %d\n", requestID)
+		fmt.Printf("✓ Создана заявка ID: %d\n", orderID)
 	}
 
-	// 4. Услуги в заявке
-	fmt.Println("🛒 Добавляем услуги в заявку...")
-	requestServices := []struct {
-		serviceID int
-		quantity  int
+	// 4. Устройства в заявке
+	fmt.Println("🛒 Добавляем устройства в заявку...")
+	orderItems := []struct {
+		deviceID int
+		quantity int
 	}{
 		{2, 3}, // 3 лампочки
 		{4, 2}, // 2 датчика
 	}
 
-	for _, rs := range requestServices {
+	for _, item := range orderItems {
 		_, err := db.Exec(`
-			INSERT INTO request_services (request_id, service_id, quantity, created_at) 
-			VALUES ($1, $2, $3, $4)
-		`, requestID, rs.serviceID, rs.quantity, time.Now())
+            INSERT INTO order_items (order_id, device_id, quantity, created_at)
+            VALUES ($1, $2, $3, $4)
+        `, orderID, item.deviceID, item.quantity, time.Now())
 
 		if err != nil {
-			log.Printf("Ошибка добавления услуги %d в заявку: %v", rs.serviceID, err)
+			log.Printf("Ошибка добавления устройства %d в заявку: %v", item.deviceID, err)
 		} else {
-			fmt.Printf("✓ Добавлена услуга ID: %d (кол-во: %d)\n", rs.serviceID, rs.quantity)
+			fmt.Printf("✓ Добавлено устройство ID: %d (кол-во: %d)\n", item.deviceID, item.quantity)
 		}
 	}
 
 	fmt.Println("✅ Миграция завершена успешно!")
-	fmt.Printf("👤 Демо-пользователь: client1 (ID: %d) / pass123\n", clientID)
-	fmt.Println("🛒 Демо-заявка создана с 2 услугами")
+	fmt.Printf("👤 Демо-клиент: client1 (ID: %d) / pass123\n", clientID)
+	fmt.Printf("🛒 Демо-заявка создана с 2 устройствами\n")
+	fmt.Println("🖼️ Картинки загружены с MinIO URL")
 }

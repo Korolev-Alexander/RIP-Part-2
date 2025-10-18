@@ -8,7 +8,7 @@ type MinIOClient struct {
 func NewMinIOClient() *MinIOClient {
 	return &MinIOClient{
 		endpoint: "localhost", // через Nginx на порту 80
-		bucket:   "images",
+		bucket:   "image",
 	}
 }
 

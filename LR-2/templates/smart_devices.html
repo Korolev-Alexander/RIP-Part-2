@@ -1,24 +1,21 @@
 {{define "content"}}
 <div class="devices-container">
-    <!-- Поиск -->
     <div class="search-section">
         <form action="/smart-devices" method="GET">
             <input type="text" name="search" placeholder="Поиск" value="{{.Search}}">
         </form>
     </div>
 
-    <!-- Сетка устройств -->
     <div class="devices-grid">
         {{range .Devices}}
         <div class="device-card">
-            <img src="{{.ImageURL}}" alt="{{.Name}}" class="device-image">
+            <img src="{{.NamespaceURL}}" alt="{{.Name}}" class="device-image">
             <h3 class="device-name">{{.Name}}</h3>
             <p class="device-description">{{.Description}}</p>
             <div class="device-buttons">
                 <a href="/smart-devices/{{.ID}}" class="btn-details">Подробнее</a>
-                <!-- ФОРМА вместо JS -->
                 <form action="/smart-cart/add" method="POST" style="display: inline;">
-                    <input type="hidden" name="service_id" value="{{.ID}}">
+                    <input type="hidden" name="device_id" value="{{.ID}}">
                     <button type="submit" class="btn-add">Добавить</button>
                 </form>
             </div>

@@ -1,14 +1,12 @@
 {{define "content"}}
 <div class="device-detail-container">
     <div class="device-content">
-        <!-- Левая часть - изображение -->
         <div class="device-image-section">
             <div class="image-placeholder">
-                <img src="{{.Device.ImageURL}}" alt="{{.Device.Name}}" class="main-device-image">
+                <img src="{{.Device.NamespaceURL}}" alt="{{.Device.Name}}" class="main-device-image">
             </div>
         </div>
 
-        <!-- Правая часть - характеристики -->
         <div class="device-info-section">
             <h2 class="specs-title">Характеристики</h2>
             <div class="specs-list">
@@ -32,16 +30,14 @@
         </div>
     </div>
 
-    <!-- Полное описание -->
     <div class="description-section">
         <h3>Описание</h3>
         <p class="full-description">{{.Device.DescriptionAll}}</p>
     </div>
 
-    <!-- ФОРМА вместо JS -->
     <div class="action-buttons">
         <form action="/smart-cart/add" method="POST">
-            <input type="hidden" name="service_id" value="{{.Device.ID}}">
+            <input type="hidden" name="device_id" value="{{.Device.ID}}">
             <button type="submit" class="btn-add-large">Добавить в корзину</button>
         </form>
     </div>

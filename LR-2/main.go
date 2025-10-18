@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-
-	apiHandlers "smartdevices/internal/api/handlers"
 	"smartdevices/internal/handlers"
 
 	"gorm.io/driver/postgres"
@@ -22,11 +20,13 @@ func main() {
 	// Инициализация HTML handlers с передачей DB
 	handlers.Init(db)
 
-	// Инициализация API handlers
-	serviceAPI := apiHandlers.NewServiceAPIHandler(db)
-	requestAPI := apiHandlers.NewRequestAPIHandler(db)
-	requestServiceAPI := apiHandlers.NewRequestServiceAPIHandler(db)
-	userAPI := apiHandlers.NewUserAPIHandler(db) // ← ДОБАВИТЬ ЭТУ СТРОКУ
+	// Инициализация API handlers (пока закомментировано)
+	/*
+	   serviceAPI := apiHandlers.NewServiceAPIHandler(db)
+	   requestAPI := apiHandlers.NewRequestAPIHandler(db)
+	   requestServiceAPI := apiHandlers.NewRequestServiceAPIHandler(db)
+	   userAPI := apiHandlers.NewUserAPIHandler(db)
+	*/
 
 	// Статические файлы
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
@@ -49,19 +49,42 @@ func main() {
 	http.HandleFunc("/smart-cart/count", handlers.GetSmartCartCountHandler)
 	http.HandleFunc("/request/", handlers.RequestByIDHandler)
 
-	// API маршруты
-	http.HandleFunc("/api/services", serviceAPI.GetServices)
-	http.HandleFunc("/api/services/", serviceAPI.GetService)
-	http.HandleFunc("/api/requests/cart", requestAPI.GetCart)
-	http.HandleFunc("/api/requests", requestAPI.GetRequests)
-	http.HandleFunc("/api/requests/", requestAPI.GetRequest)
-	http.HandleFunc("/api/request-services/", requestServiceAPI.UpdateRequestService)
+	// API маршруты - ЗАКОММЕНТИРОВАНО для обновления
+	/*
+	   http.HandleFunc("/api/services", func(w http.ResponseWriter, r *http.Request) {
+	       switch r.Method {
+	       case "GET":
+	           serviceAPI.GetServices(w, r)
+	       case "POST":
+	           serviceAPI.CreateService(w, r)
+	       default:
+	           http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	       }
+	   })
+	   http.HandleFunc("/api/services/", func(w http.ResponseWriter, r *http.Request) {
+	       switch r.Method {
+	       case "GET":
+	           serviceAPI.GetService(w, r)
+	       case "PUT":
+	           serviceAPI.UpdateService(w, r)
+	       case "DELETE":
+	           serviceAPI.DeleteService(w, r)
+	       default:
+	           http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	       }
+	   })
+	   http.HandleFunc("/api/requests/cart", requestAPI.GetCart)
+	   http.HandleFunc("/api/requests", requestAPI.GetRequests)
+	   http.HandleFunc("/api/requests/", requestAPI.GetRequest)
+	   http.HandleFunc("/api/request-services/", requestServiceAPI.UpdateRequestService)
 
-	// ДОБАВИТЬ ЭТИ МАРШРУТЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ:
-	http.HandleFunc("/api/users", userAPI.GetUsers)
-	http.HandleFunc("/api/users/", userAPI.GetUser)
+	   // Маршруты для пользователей
+	   http.HandleFunc("/api/users", userAPI.GetUsers)
+	   http.HandleFunc("/api/users/", userAPI.GetUser)
+	*/
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
-	log.Println("📱 API доступно на http://localhost:8080/api/services")
+	log.Println("📱 HTML интерфейс доступен")
+	log.Println("⚡ API временно отключено для обновления")
 	http.ListenAndServe(":8080", nil)
 }
