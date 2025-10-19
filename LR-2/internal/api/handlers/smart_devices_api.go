@@ -2,12 +2,17 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"smartdevices/internal/api/serializers"
 	"smartdevices/internal/models"
+	"smartdevices/internal/storage"
 
 	"gorm.io/gorm"
 )
@@ -181,7 +186,7 @@ func (h *SmartDeviceAPIHandler) UpdateSmartDevice(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(serializers.SmartDeviceToJSON(device))
 }
 
-// DELETE /api/smart-devices/{id} - удаление устройства
+// DELETE /api/smart-devices/{id} - удаление устройства (БЕЗ удаления изображения из MinIO)
 func (h *SmartDeviceAPIHandler) DeleteSmartDevice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -206,9 +211,144 @@ func (h *SmartDeviceAPIHandler) DeleteSmartDevice(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ТОЛЬКО деактивация устройства, без удаления изображения из MinIO
 	device.IsActive = false
 	h.db.Save(&device)
 
+	fmt.Printf("✅ Device deactivated: %s (ID: %d)\n", device.Name, device.ID)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/smart-devices/{id}/image - добавление изображения
+func (h *SmartDeviceAPIHandler) UploadDeviceImage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Парсим multipart form
+	err := r.ParseMultipartForm(32 << 20) // 32 MB max
+	if err != nil {
+		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Получаем файл из формы
+	file, handler, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "Failed to get image file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Читаем файл в память
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
+	idStr = strings.TrimSuffix(idStr, "/image")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid device ID", http.StatusBadRequest)
+		return
+	}
+
+	var device models.SmartDevice
+	result := h.db.First(&device, id)
+	if result.Error != nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
+		return
+	}
+
+	// Генерируем имя файла на латинице
+	fileExt := ".png"
+	if strings.Contains(handler.Filename, ".") {
+		fileExt = filepath.Ext(handler.Filename)
+	}
+	newFileName := fmt.Sprintf("device_%d_%d%s", device.ID, time.Now().Unix(), fileExt)
+
+	// Загружаем файл в MinIO
+	minioClient := storage.NewMinIOClient()
+	err = minioClient.UploadFile(newFileName, fileData)
+	if err != nil {
+		fmt.Printf("❌ MinIO upload failed: %v\n", err)
+		http.Error(w, "Failed to upload image to storage: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Обновляем URL в БД
+	namespaceURL := minioClient.GetImageURL(newFileName)
+	device.NamespaceURL = namespaceURL
+	h.db.Save(&device)
+
+	fmt.Printf("✅ Image uploaded: %s (%d bytes)\n", newFileName, len(fileData))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"message":   "Image uploaded successfully",
+		"image_url": namespaceURL,
+		"file_name": newFileName,
+		"file_size": len(fileData),
+	})
+}
+
+// DELETE /api/smart-devices/{id}/image - удаление изображения устройства
+func (h *SmartDeviceAPIHandler) DeleteDeviceImage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
+	idStr = strings.TrimSuffix(idStr, "/image")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid device ID", http.StatusBadRequest)
+		return
+	}
+
+	var device models.SmartDevice
+	result := h.db.First(&device, id)
+	if result.Error != nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
+		return
+	}
+
+	// Удаляем изображение из MinIO если есть
+	if device.NamespaceURL != "" && strings.Contains(device.NamespaceURL, "localhost:9000") {
+		filename := filepath.Base(device.NamespaceURL)
+		minioClient := storage.NewMinIOClient()
+		err := minioClient.DeleteFile(filename)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to delete image from MinIO: %v\n", err)
+			http.Error(w, "Failed to delete image from storage", http.StatusInternalServerError)
+			return
+		} else {
+			fmt.Printf("✅ Image deleted from MinIO: %s\n", filename)
+		}
+
+		// Очищаем URL в БД
+		device.NamespaceURL = ""
+		h.db.Save(&device)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Image deleted successfully",
+	})
 }

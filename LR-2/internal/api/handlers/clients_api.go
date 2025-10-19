@@ -76,7 +76,7 @@ func (h *ClientAPIHandler) GetClient(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(serializers.ClientToJSON(client))
 }
 
-// POST /api/clients - создание клиента
+// POST /api/clients/register - создание клиента
 func (h *ClientAPIHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -115,7 +115,7 @@ func (h *ClientAPIHandler) CreateClient(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(serializers.ClientToJSON(client))
 }
 
-// PUT /api/clients/{id} - изменение клиента
+// PUT /api/clients/update - изменение клиента
 func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -126,23 +126,21 @@ func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/clients/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid client ID", http.StatusBadRequest)
+	var req struct {
+		ID       uint   `json:"id"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	var client models.Client
-	result := h.db.First(&client, id)
+	result := h.db.First(&client, req.ID)
 	if result.Error != nil {
 		http.Error(w, "Client not found", http.StatusNotFound)
-		return
-	}
-
-	var req serializers.ClientRegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -155,4 +153,54 @@ func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(serializers.ClientToJSON(client))
+}
+
+// POST /api/clients/login - аутентификация
+func (h *ClientAPIHandler) Login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var req serializers.ClientLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	var client models.Client
+	result := h.db.Where("username = ? AND password = ? AND is_active = ?", req.Username, req.Password, true).First(&client)
+	if result.Error != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"user":    serializers.ClientToJSON(client),
+		"message": "Login successful",
+	})
+}
+
+// POST /api/clients/logout - деавторизация
+func (h *ClientAPIHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Logout successful",
+	})
 }

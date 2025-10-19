@@ -171,6 +171,48 @@ func (h *SmartOrderAPIHandler) GetSmartOrder(w http.ResponseWriter, r *http.Requ
 	json.NewEncoder(w).Encode(response)
 }
 
+// PUT /api/smart-orders/{id} - изменение полей заявки
+func (h *SmartOrderAPIHandler) UpdateSmartOrder(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
+
+	var order models.SmartOrder
+	result := h.db.First(&order, id)
+	if result.Error != nil || order.Status == "deleted" {
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	var req serializers.SmartOrderUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Обновляем только разрешенные поля
+	if req.Address != "" {
+		order.Address = req.Address
+	}
+
+	h.db.Save(&order)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(serializers.SmartOrderToJSON(order, nil))
+}
+
 // PUT /api/smart-orders/{id}/form - формирование заявки
 func (h *SmartOrderAPIHandler) FormSmartOrder(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -234,19 +276,46 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 	}
 
 	var order models.SmartOrder
-	result := h.db.First(&order, id)
+	result := h.db.Preload("Client").First(&order, id)
 	if result.Error != nil {
 		http.Error(w, "Order not found", http.StatusNotFound)
 		return
 	}
 
-	// Расчет общего трафика
-	var totalTraffic float64
-	h.db.Model(&models.OrderItem{}).
-		Select("SUM(smart_devices.data_per_hour * order_items.quantity)").
-		Joins("JOIN smart_devices ON smart_devices.id = order_items.device_id").
-		Where("order_items.order_id = ?", order.ID).
-		Scan(&totalTraffic)
+	// Проверяем что заявка сформирована
+	if order.Status != "formed" {
+		http.Error(w, "Only formed orders can be completed", http.StatusBadRequest)
+		return
+	}
+
+	// Расчет общего трафика по формуле из лабы 2
+	var items []models.OrderItem
+	h.db.Preload("Device").Where("order_id = ?", order.ID).Find(&items)
+
+	totalTraffic := 0.0
+	for _, item := range items {
+		baseTraffic := item.Device.DataPerHour * float64(item.Quantity)
+
+		// Формула расчета с коэффициентами для разных типов устройств
+		var coefficient float64
+		switch {
+		case strings.Contains(item.Device.Name, "Хаб"):
+			coefficient = 1.3 // Хабы требуют больше трафика
+		case strings.Contains(item.Device.Name, "Датчик"):
+			coefficient = 0.7 // Датчики экономят трафик
+		case strings.Contains(item.Device.Name, "Лампочка"):
+			coefficient = 1.1 // Лампочки немного больше
+		case strings.Contains(item.Device.Name, "Розетка"):
+			coefficient = 0.9 // Розетки мало трафика
+		case strings.Contains(item.Device.Name, "Выключатель"):
+			coefficient = 0.8 // Выключатели мало трафика
+		default:
+			coefficient = 1.0
+		}
+
+		traffic := baseTraffic * coefficient
+		totalTraffic += traffic
+	}
 
 	// Установка статуса, модератора и даты завершения
 	now := time.Now()
@@ -257,8 +326,54 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 
 	h.db.Save(&order)
 
+	// Загружаем items для ответа
+	var itemResponses []serializers.SmartOrderItemResponse
+	for _, item := range items {
+		itemResponses = append(itemResponses, serializers.SmartOrderItemResponse{
+			DeviceID:     item.DeviceID,
+			DeviceName:   item.Device.Name,
+			Quantity:     item.Quantity,
+			DataPerHour:  item.Device.DataPerHour,
+			NamespaceURL: item.Device.NamespaceURL,
+		})
+	}
+
+	response := serializers.SmartOrderToJSON(order, itemResponses)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(serializers.SmartOrderToJSON(order, nil))
+	json.NewEncoder(w).Encode(response)
+}
+
+// DELETE /api/smart-orders/{id} - удаление заявки
+func (h *SmartOrderAPIHandler) DeleteSmartOrder(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid order ID", http.StatusBadRequest)
+		return
+	}
+
+	var order models.SmartOrder
+	result := h.db.First(&order, id)
+	if result.Error != nil {
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Мягкое удаление - меняем статус
+	order.Status = "deleted"
+	h.db.Save(&order)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Вспомогательная функция

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -36,6 +37,15 @@ func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Находим текущую корзину пользователя
+	clientID := uint(1) // Фиксированный пользователь
+	var order models.SmartOrder
+	result := h.db.Where("status = ? AND client_id = ?", "draft", clientID).First(&order)
+	if result.Error != nil {
+		http.Error(w, "Cart not found", http.StatusNotFound)
+		return
+	}
+
 	var request struct {
 		Quantity int `json:"quantity"`
 	}
@@ -50,10 +60,11 @@ func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Ищем устройство ИМЕННО в этой корзине
 	var orderItem models.OrderItem
-	result := h.db.Where("device_id = ?", deviceID).First(&orderItem)
+	result = h.db.Where("order_id = ? AND device_id = ?", order.ID, deviceID).First(&orderItem)
 	if result.Error != nil {
-		http.Error(w, "Order item not found", http.StatusNotFound)
+		http.Error(w, "Device not found in cart", http.StatusNotFound)
 		return
 	}
 
@@ -79,20 +90,44 @@ func (h *OrderItemAPIHandler) DeleteOrderItem(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ДОБАВИМ ОТЛАДКУ
+	path := r.URL.Path
+	log.Printf("🛠️ DeleteOrderItem path: %s", path)
+
 	idStr := r.URL.Path[len("/api/order-items/"):]
+	log.Printf("🛠️ DeleteOrderItem idStr: %s", idStr)
+
 	deviceID, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "Invalid device ID", http.StatusBadRequest)
+		log.Printf("❌ Error converting deviceID: %v", err)
+		http.Error(w, "Invalid device ID: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var orderItem models.OrderItem
-	result := h.db.Where("device_id = ?", deviceID).First(&orderItem)
+	log.Printf("🛠️ DeleteOrderItem deviceID: %d", deviceID)
+
+	// Находим текущую корзину пользователя
+	clientID := uint(1) // Фиксированный пользователь
+	var order models.SmartOrder
+	result := h.db.Where("status = ? AND client_id = ?", "draft", clientID).First(&order)
 	if result.Error != nil {
-		http.Error(w, "Order item not found", http.StatusNotFound)
+		log.Printf("❌ Cart not found: %v", result.Error)
+		http.Error(w, "Cart not found", http.StatusNotFound)
 		return
 	}
 
+	log.Printf("🛠️ Found cart: ID=%d", order.ID)
+
+	// Удаляем устройство ИЗ ЭТОЙ КОРЗИНЫ
+	var orderItem models.OrderItem
+	result = h.db.Where("order_id = ? AND device_id = ?", order.ID, deviceID).First(&orderItem)
+	if result.Error != nil {
+		log.Printf("❌ Device %d not found in cart %d: %v", deviceID, order.ID, result.Error)
+		http.Error(w, "Device not found in cart", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("🛠️ Deleting device %d from cart %d", deviceID, order.ID)
 	h.db.Delete(&orderItem)
 
 	w.WriteHeader(http.StatusNoContent)
