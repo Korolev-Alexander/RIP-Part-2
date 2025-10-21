@@ -7,6 +7,7 @@ import (
 
 	apiHandlers "smartdevices/internal/api/handlers"
 	"smartdevices/internal/handlers"
+	"smartdevices/internal/middleware"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -22,6 +23,9 @@ func main() {
 
 	// Инициализация HTML handlers с передачей DB
 	handlers.Init(db)
+
+	// Инициализация middleware
+	authMiddleware := middleware.NewAuthMiddleware(db)
 
 	// Инициализация API handlers
 	smartDeviceAPI := apiHandlers.NewSmartDeviceAPIHandler(db)
@@ -50,13 +54,19 @@ func main() {
 	http.HandleFunc("/smart-cart/count", handlers.GetSmartCartCountHandler)
 	http.HandleFunc("/request/", handlers.RequestByIDHandler)
 
+	// API маршруты аутентификации
+	http.HandleFunc("/api/auth/login", authMiddleware.Login)
+	http.HandleFunc("/api/auth/logout", authMiddleware.Logout)
+	http.HandleFunc("/api/auth/session", authMiddleware.GetSessionInfo)
+	http.HandleFunc("/api/auth/sessions", authMiddleware.RequireModerator(authMiddleware.GetAllSessions))
+
 	// API маршруты - Smart Devices
 	http.HandleFunc("/api/smart-devices", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
 			smartDeviceAPI.GetSmartDevices(w, r)
 		case "POST":
-			smartDeviceAPI.CreateSmartDevice(w, r)
+			authMiddleware.RequireModerator(smartDeviceAPI.CreateSmartDevice)(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -69,9 +79,9 @@ func main() {
 		switch {
 		case strings.Contains(path, "/image"):
 			if r.Method == "POST" {
-				smartDeviceAPI.UploadDeviceImage(w, r)
+				authMiddleware.RequireModerator(smartDeviceAPI.UploadDeviceImage)(w, r)
 			} else if r.Method == "DELETE" {
-				smartDeviceAPI.DeleteDeviceImage(w, r)
+				authMiddleware.RequireModerator(smartDeviceAPI.DeleteDeviceImage)(w, r)
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
@@ -81,9 +91,9 @@ func main() {
 			case "GET":
 				smartDeviceAPI.GetSmartDevice(w, r)
 			case "PUT":
-				smartDeviceAPI.UpdateSmartDevice(w, r)
+				authMiddleware.RequireModerator(smartDeviceAPI.UpdateSmartDevice)(w, r)
 			case "DELETE":
-				smartDeviceAPI.DeleteSmartDevice(w, r)
+				authMiddleware.RequireModerator(smartDeviceAPI.DeleteSmartDevice)(w, r)
 			default:
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
@@ -91,8 +101,8 @@ func main() {
 	})
 
 	// API маршруты - Smart Orders
-	http.HandleFunc("/api/smart-orders/cart", smartOrderAPI.GetCart)
-	http.HandleFunc("/api/smart-orders", smartOrderAPI.GetSmartOrders)
+	http.HandleFunc("/api/smart-orders/cart", authMiddleware.RequireAuth(smartOrderAPI.GetCart))
+	http.HandleFunc("/api/smart-orders", authMiddleware.RequireAuth(smartOrderAPI.GetSmartOrders))
 
 	// Обработка всех /api/smart-orders/... маршрутов
 	http.HandleFunc("/api/smart-orders/", func(w http.ResponseWriter, r *http.Request) {
@@ -101,13 +111,13 @@ func main() {
 		switch {
 		case strings.Contains(path, "/complete"):
 			if r.Method == "PUT" {
-				smartOrderAPI.CompleteSmartOrder(w, r)
+				authMiddleware.RequireModerator(smartOrderAPI.CompleteSmartOrder)(w, r)
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		case strings.Contains(path, "/form"):
 			if r.Method == "PUT" {
-				smartOrderAPI.FormSmartOrder(w, r)
+				authMiddleware.RequireAuth(smartOrderAPI.FormSmartOrder)(w, r)
 			} else {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
@@ -115,23 +125,23 @@ func main() {
 			// Обычные CRUD операции
 			switch r.Method {
 			case "GET":
-				smartOrderAPI.GetSmartOrder(w, r)
+				authMiddleware.RequireAuth(smartOrderAPI.GetSmartOrder)(w, r)
 			case "PUT":
-				smartOrderAPI.UpdateSmartOrder(w, r)
+				authMiddleware.RequireAuth(smartOrderAPI.UpdateSmartOrder)(w, r)
 			case "DELETE":
-				smartOrderAPI.DeleteSmartOrder(w, r)
+				authMiddleware.RequireAuth(smartOrderAPI.DeleteSmartOrder)(w, r)
 			default:
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			}
 		}
 	})
 
-	// API маршруты - Order Items (ИСПРАВЛЕННАЯ МАРШРУТИЗАЦИЯ)
+	// API маршруты - Order Items
 	http.HandleFunc("/api/order-items/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "PUT" {
-			orderItemAPI.UpdateOrderItem(w, r)
+			authMiddleware.RequireAuth(orderItemAPI.UpdateOrderItem)(w, r)
 		} else if r.Method == "DELETE" {
-			orderItemAPI.DeleteOrderItem(w, r)
+			authMiddleware.RequireAuth(orderItemAPI.DeleteOrderItem)(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -141,45 +151,54 @@ func main() {
 	http.HandleFunc("/api/clients/login", clientAPI.Login)
 	http.HandleFunc("/api/clients/logout", clientAPI.Logout)
 	http.HandleFunc("/api/clients/register", clientAPI.CreateClient)
-	http.HandleFunc("/api/clients/update", clientAPI.UpdateClient)
-	http.HandleFunc("/api/clients/", clientAPI.GetClient)
-	http.HandleFunc("/api/clients", clientAPI.GetClients)
+	http.HandleFunc("/api/clients/update", authMiddleware.RequireAuth(clientAPI.UpdateClient))
+	http.HandleFunc("/api/clients/", authMiddleware.RequireModerator(clientAPI.GetClient))
+	http.HandleFunc("/api/clients", authMiddleware.RequireModerator(clientAPI.GetClients))
 
 	log.Println("🚀 Сервер запущен на http://localhost:8080")
 	log.Println("📱 HTML интерфейс доступен")
-	log.Println("🔗 API доступно (22 метода)")
+	log.Println("🔐 Auth system initialized")
+	log.Println("🍪 Session storage: Redis")
+	log.Println("👥 User roles: client/moderator")
+	log.Println("🔗 API доступно (22 метода + auth)")
+
+	log.Println("🔐 Auth API:")
+	log.Println("   POST   /api/auth/login              - аутентификация")
+	log.Println("   POST   /api/auth/logout             - выход")
+	log.Println("   GET    /api/auth/session            - информация о сессии")
+	log.Println("   GET    /api/auth/sessions           - все сессии (модератор)")
 
 	log.Println("📦 Smart Devices API:")
-	log.Println("   GET    /api/smart-devices              - список устройств")
-	log.Println("   GET    /api/smart-devices/{id}         - устройство по ID")
-	log.Println("   POST   /api/smart-devices              - создать устройство")
-	log.Println("   PUT    /api/smart-devices/{id}         - обновить устройство")
-	log.Println("   DELETE /api/smart-devices/{id}         - удалить устройство")
-	log.Println("   POST   /api/smart-devices/{id}/image   - загрузить картинку")
-	log.Println("   DELETE /api/smart-devices/{id}/image   - удалить картинку")
+	log.Println("   GET    /api/smart-devices           - список устройств")
+	log.Println("   GET    /api/smart-devices/{id}      - устройство по ID")
+	log.Println("   POST   /api/smart-devices           - создать устройство (модератор)")
+	log.Println("   PUT    /api/smart-devices/{id}      - обновить устройство (модератор)")
+	log.Println("   DELETE /api/smart-devices/{id}      - удалить устройство (модератор)")
+	log.Println("   POST   /api/smart-devices/{id}/image - загрузить картинку (модератор)")
+	log.Println("   DELETE /api/smart-devices/{id}/image - удалить картинку (модератор)")
 
 	log.Println("📋 Smart Orders API:")
-	log.Println("   GET    /api/smart-orders/cart          - корзина")
-	log.Println("   GET    /api/smart-orders               - список заявок")
-	log.Println("   GET    /api/smart-orders/{id}          - заявка по ID")
-	log.Println("   PUT    /api/smart-orders/{id}          - обновить заявку")
-	log.Println("   PUT    /api/smart-orders/{id}/form     - сформировать заявку")
-	log.Println("   PUT    /api/smart-orders/{id}/complete - завершить заявку")
-	log.Println("   DELETE /api/smart-orders/{id}          - удалить заявку")
+	log.Println("   GET    /api/smart-orders/cart       - корзина (требует auth)")
+	log.Println("   GET    /api/smart-orders            - список заявок (требует auth)")
+	log.Println("   GET    /api/smart-orders/{id}       - заявка по ID (требует auth)")
+	log.Println("   PUT    /api/smart-orders/{id}       - обновить заявку (требует auth)")
+	log.Println("   PUT    /api/smart-orders/{id}/form  - сформировать заявку (требует auth)")
+	log.Println("   PUT    /api/smart-orders/{id}/complete - завершить заявку (модератор)")
+	log.Println("   DELETE /api/smart-orders/{id}       - удалить заявку (требует auth)")
 
 	log.Println("🛒 Order Items API:")
-	log.Println("   PUT    /api/order-items/{deviceId}     - изменить количество")
-	log.Println("   DELETE /api/order-items/{deviceId}     - удалить из заявки")
+	log.Println("   PUT    /api/order-items/{deviceId}  - изменить количество (требует auth)")
+	log.Println("   DELETE /api/order-items/{deviceId}  - удалить из заявки (требует auth)")
 
 	log.Println("👥 Clients API:")
-	log.Println("   GET    /api/clients                    - список клиентов")
-	log.Println("   GET    /api/clients/{id}               - клиент по ID")
-	log.Println("   POST   /api/clients/register           - регистрация")
-	log.Println("   PUT    /api/clients/update             - обновить данные")
-	log.Println("   POST   /api/clients/login              - аутентификация")
-	log.Println("   POST   /api/clients/logout             - деавторизация")
+	log.Println("   GET    /api/clients                 - список клиентов (модератор)")
+	log.Println("   GET    /api/clients/{id}            - клиент по ID (модератор)")
+	log.Println("   POST   /api/clients/register        - регистрация")
+	log.Println("   PUT    /api/clients/update          - обновить данные (требует auth)")
+	log.Println("   POST   /api/clients/login           - аутентификация")
+	log.Println("   POST   /api/clients/logout          - деавторизация")
 
-	log.Println("🎯 Всего методов: 22")
+	log.Println("🎯 Всего методов: 26")
 
 	// ⚠️ ЭТА СТРОЧКА ОБЯЗАТЕЛЬНА! - запускает HTTP сервер
 	http.ListenAndServe(":8080", nil)

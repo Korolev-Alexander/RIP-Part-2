@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"smartdevices/internal/api/serializers"
+	"smartdevices/internal/middleware"
 	"smartdevices/internal/models"
 	"smartdevices/internal/storage"
 
@@ -18,11 +19,15 @@ import (
 )
 
 type SmartDeviceAPIHandler struct {
-	db *gorm.DB
+	db             *gorm.DB
+	authMiddleware *middleware.AuthMiddleware
 }
 
 func NewSmartDeviceAPIHandler(db *gorm.DB) *SmartDeviceAPIHandler {
-	return &SmartDeviceAPIHandler{db: db}
+	return &SmartDeviceAPIHandler{
+		db:             db,
+		authMiddleware: middleware.NewAuthMiddleware(db),
+	}
 }
 
 // GET /api/smart-devices - список с фильтрацией

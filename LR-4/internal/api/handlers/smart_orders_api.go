@@ -8,17 +8,22 @@ import (
 	"time"
 
 	"smartdevices/internal/api/serializers"
+	"smartdevices/internal/middleware"
 	"smartdevices/internal/models"
 
 	"gorm.io/gorm"
 )
 
 type SmartOrderAPIHandler struct {
-	db *gorm.DB
+	db             *gorm.DB
+	authMiddleware *middleware.AuthMiddleware
 }
 
 func NewSmartOrderAPIHandler(db *gorm.DB) *SmartOrderAPIHandler {
-	return &SmartOrderAPIHandler{db: db}
+	return &SmartOrderAPIHandler{
+		db:             db,
+		authMiddleware: middleware.NewAuthMiddleware(db),
+	}
 }
 
 // GET /api/smart-orders/cart - иконка корзины
@@ -32,10 +37,15 @@ func (h *SmartOrderAPIHandler) GetCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientID := uint(1) // Фиксированный пользователь для демо
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
 
 	var order models.SmartOrder
-	result := h.db.Where("status = ? AND client_id = ?", "draft", clientID).First(&order)
+	result := h.db.Where("status = ? AND client_id = ?", "draft", currentUser.ClientID).First(&order)
 
 	var response struct {
 		OrderID uint `json:"order_id"`
@@ -73,13 +83,27 @@ func (h *SmartOrderAPIHandler) GetSmartOrders(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	status := r.URL.Query().Get("status")
 	dateFromStr := r.URL.Query().Get("date_from")
 	dateToStr := r.URL.Query().Get("date_to")
 
 	var orders []models.SmartOrder
-	query := h.db.Preload("Client").Preload("Moderator").
-		Where("status != ? AND status != ?", "deleted", "draft")
+	query := h.db.Preload("Client").Preload("Moderator")
+
+	// Если не модератор - показываем только свои заявки
+	if !currentUser.IsModerator {
+		query = query.Where("client_id = ?", currentUser.ClientID)
+	} else {
+		// Модераторы не видят черновики и удаленные
+		query = query.Where("status != ? AND status != ?", "deleted", "draft")
+	}
 
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -137,6 +161,13 @@ func (h *SmartOrderAPIHandler) GetSmartOrder(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -148,6 +179,12 @@ func (h *SmartOrderAPIHandler) GetSmartOrder(w http.ResponseWriter, r *http.Requ
 	result := h.db.Preload("Client").Preload("Moderator").First(&order, id)
 	if result.Error != nil || order.Status == "deleted" {
 		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Проверяем права доступа
+	if !currentUser.IsModerator && order.ClientID != currentUser.ClientID {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -182,6 +219,13 @@ func (h *SmartOrderAPIHandler) UpdateSmartOrder(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -193,6 +237,12 @@ func (h *SmartOrderAPIHandler) UpdateSmartOrder(w http.ResponseWriter, r *http.R
 	result := h.db.First(&order, id)
 	if result.Error != nil || order.Status == "deleted" {
 		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Проверяем права доступа
+	if !currentUser.IsModerator && order.ClientID != currentUser.ClientID {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -224,6 +274,13 @@ func (h *SmartOrderAPIHandler) FormSmartOrder(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	idStr = strings.TrimSuffix(idStr, "/form")
 	id, err := strconv.Atoi(idStr)
@@ -236,6 +293,12 @@ func (h *SmartOrderAPIHandler) FormSmartOrder(w http.ResponseWriter, r *http.Req
 	result := h.db.First(&order, id)
 	if result.Error != nil {
 		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Проверяем права доступа
+	if !currentUser.IsModerator && order.ClientID != currentUser.ClientID {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -264,6 +327,13 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Проверяем права модератора
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil || !currentUser.IsModerator {
+		http.Error(w, `{"error": "Moderator access required"}`, http.StatusForbidden)
 		return
 	}
 
@@ -321,7 +391,7 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 	now := time.Now()
 	order.Status = "completed"
 	order.CompletedAt = &now
-	order.ModeratorID = uintPtr(2) // Фиксированный модератор для демо
+	order.ModeratorID = &currentUser.ClientID
 	order.TotalTraffic = totalTraffic
 
 	h.db.Save(&order)
@@ -355,6 +425,13 @@ func (h *SmartOrderAPIHandler) DeleteSmartOrder(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -366,6 +443,12 @@ func (h *SmartOrderAPIHandler) DeleteSmartOrder(w http.ResponseWriter, r *http.R
 	result := h.db.First(&order, id)
 	if result.Error != nil {
 		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Проверяем права доступа
+	if !currentUser.IsModerator && order.ClientID != currentUser.ClientID {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 

@@ -6,17 +6,22 @@ import (
 	"net/http"
 	"strconv"
 
+	"smartdevices/internal/middleware"
 	"smartdevices/internal/models"
 
 	"gorm.io/gorm"
 )
 
 type OrderItemAPIHandler struct {
-	db *gorm.DB
+	db             *gorm.DB
+	authMiddleware *middleware.AuthMiddleware
 }
 
 func NewOrderItemAPIHandler(db *gorm.DB) *OrderItemAPIHandler {
-	return &OrderItemAPIHandler{db: db}
+	return &OrderItemAPIHandler{
+		db:             db,
+		authMiddleware: middleware.NewAuthMiddleware(db),
+	}
 }
 
 // PUT /api/order-items/{deviceId} - изменение количества
@@ -30,6 +35,13 @@ func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	idStr := r.URL.Path[len("/api/order-items/"):]
 	deviceID, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -38,9 +50,8 @@ func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Req
 	}
 
 	// Находим текущую корзину пользователя
-	clientID := uint(1) // Фиксированный пользователь
 	var order models.SmartOrder
-	result := h.db.Where("status = ? AND client_id = ?", "draft", clientID).First(&order)
+	result := h.db.Where("status = ? AND client_id = ?", "draft", currentUser.ClientID).First(&order)
 	if result.Error != nil {
 		http.Error(w, "Cart not found", http.StatusNotFound)
 		return
@@ -90,6 +101,13 @@ func (h *OrderItemAPIHandler) DeleteOrderItem(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	// ДОБАВИМ ОТЛАДКУ
 	path := r.URL.Path
 	log.Printf("🛠️ DeleteOrderItem path: %s", path)
@@ -107,9 +125,8 @@ func (h *OrderItemAPIHandler) DeleteOrderItem(w http.ResponseWriter, r *http.Req
 	log.Printf("🛠️ DeleteOrderItem deviceID: %d", deviceID)
 
 	// Находим текущую корзину пользователя
-	clientID := uint(1) // Фиксированный пользователь
 	var order models.SmartOrder
-	result := h.db.Where("status = ? AND client_id = ?", "draft", clientID).First(&order)
+	result := h.db.Where("status = ? AND client_id = ?", "draft", currentUser.ClientID).First(&order)
 	if result.Error != nil {
 		log.Printf("❌ Cart not found: %v", result.Error)
 		http.Error(w, "Cart not found", http.StatusNotFound)

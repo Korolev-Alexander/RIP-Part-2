@@ -7,17 +7,22 @@ import (
 	"strings"
 
 	"smartdevices/internal/api/serializers"
+	"smartdevices/internal/middleware"
 	"smartdevices/internal/models"
 
 	"gorm.io/gorm"
 )
 
 type ClientAPIHandler struct {
-	db *gorm.DB
+	db             *gorm.DB
+	authMiddleware *middleware.AuthMiddleware
 }
 
 func NewClientAPIHandler(db *gorm.DB) *ClientAPIHandler {
-	return &ClientAPIHandler{db: db}
+	return &ClientAPIHandler{
+		db:             db,
+		authMiddleware: middleware.NewAuthMiddleware(db),
+	}
 }
 
 // GET /api/clients - список клиентов
@@ -126,6 +131,13 @@ func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		ID       uint   `json:"id"`
 		Username string `json:"username"`
@@ -134,6 +146,12 @@ func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) 
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Проверяем что пользователь обновляет свои данные
+	if currentUser.ClientID != req.ID && !currentUser.IsModerator {
+		http.Error(w, "Access denied", http.StatusForbidden)
 		return
 	}
 
@@ -179,6 +197,24 @@ func (h *ClientAPIHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Создаем сессию через middleware
+	sessionID, err := h.authMiddleware.CreateSession(client)
+	if err != nil {
+		http.Error(w, "Session creation failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Устанавливаем куки
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    sessionID,
+		Path:     "/",
+		MaxAge:   86400, // 24 часа
+		HttpOnly: true,
+		Secure:   false, // true в production
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -197,6 +233,20 @@ func (h *ClientAPIHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	cookie, err := r.Cookie("session_id")
+	if err == nil {
+		h.authMiddleware.DeleteSession(cookie.Value)
+	}
+
+	// Очищаем куки
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

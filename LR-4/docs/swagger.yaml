@@ -1,0 +1,209 @@
+openapi: 3.0.0
+info:
+  title: Smart Devices API
+  description: API для системы умных устройств
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@smartdevices.com
+
+servers:
+  - url: http://localhost:8080/api
+    description: Development server
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        is_moderator:
+          type: boolean
+        is_active:
+          type: boolean
+
+    SmartDevice:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        model:
+          type: string
+        avg_data_rate:
+          type: number
+        data_per_hour:
+          type: number
+        namespace_url:
+          type: string
+        description:
+          type: string
+        description_all:
+          type: string
+        protocol:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    SmartOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [draft, formed, completed, rejected, deleted]
+        address:
+          type: string
+        total_traffic:
+          type: number
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        formed_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        moderator_id:
+          type: integer
+        moderator_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SmartOrderItem'
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        user:
+          $ref: '#/components/schemas/Client'
+        message:
+          type: string
+
+paths:
+  /auth/login:
+    post:
+      summary: Аутентификация пользователя
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Неверные учетные данные
+
+  /smart-orders:
+    get:
+      summary: Получить список заявок
+      tags: [Orders]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, formed, completed, rejected]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Список заявок
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SmartOrder'
+        '401':
+          description: Требуется аутентификация
+        '403':
+          description: Недостаточно прав
+
+  /smart-orders/{id}/complete:
+    put:
+      summary: Завершить заявку (только для модераторов)
+      tags: [Orders]
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Заявка завершена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmartOrder'
+        '403':
+          description: Требуются права модератора
+        '404':
+          description: Заявка не найдена
+
+tags:
+  - name: Auth
+    description: Аутентификация и управление сессиями
+  - name: Devices
+    description: Управление умными устройствами
+  - name: Orders
+    description: Управление заявками
+  - name: Clients
+    description: Управление клиентами
