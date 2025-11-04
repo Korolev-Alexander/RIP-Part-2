@@ -26,4 +26,5 @@ function AppBreadcrumbs({ items }) {
   );
 }
 
+// ДОБАВЛЯЕМ ЭТУ СТРОЧКУ!
 export default AppBreadcrumbs;
