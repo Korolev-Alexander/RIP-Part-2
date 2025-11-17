@@ -22,8 +22,12 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device }) => {
   };
 
   return (
-    <Card className="h-100 device-card">
-      <div className="image-container" style={{ height: '200px', overflow: 'hidden' }}>
+    <Card className="h-100 device-card" style={{ minHeight: '350px' }}>
+      <div className="image-container" style={{ 
+        height: '200px', 
+        overflow: 'hidden',
+        background: '#f8f9fa'
+      }}>
         <Card.Img 
           variant="top" 
           src={device.namespace_url || getDefaultImage()}
@@ -31,7 +35,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device }) => {
           style={{ 
             height: '100%', 
             objectFit: 'cover',
-            backgroundColor: '#f8f9fa'
+            padding: '1rem'
           }}
           onError={(e) => {
             const target = e.target as HTMLImageElement;

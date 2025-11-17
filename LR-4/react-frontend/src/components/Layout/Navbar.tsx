@@ -6,7 +6,7 @@ const AppNavbar: React.FC = () => {
   const location = useLocation();
 
   return (
-    <Navbar bg="dark" variant="dark" expand="lg">
+    <Navbar bg="dark" variant="dark" expand="lg" collapseOnSelect>
       <Container>
         <Navbar.Brand as={Link} to="/">
           🏠 Умный Дом
@@ -14,15 +14,23 @@ const AppNavbar: React.FC = () => {
         <Navbar.Toggle aria-controls="basic-navbar-nav" />
         <Navbar.Collapse id="basic-navbar-nav">
           <Nav className="me-auto">
-            <Nav.Link as={Link} to="/" active={location.pathname === '/'}>
+            <Nav.Link 
+              as={Link} 
+              to="/" 
+              active={location.pathname === '/'}
+            >
               Главная
             </Nav.Link>
-            <Nav.Link as={Link} to="/devices" active={location.pathname === '/devices'}>
+            <Nav.Link 
+              as={Link} 
+              to="/devices" 
+              active={location.pathname === '/devices'}
+            >
               Устройства
             </Nav.Link>
           </Nav>
           <Nav>
-            {/* Просто иконка корзины без ссылки */}
+            {/* Иконка корзины */}
             <Nav.Link className="fs-4" style={{cursor: 'default'}}>
               🛒
             </Nav.Link>

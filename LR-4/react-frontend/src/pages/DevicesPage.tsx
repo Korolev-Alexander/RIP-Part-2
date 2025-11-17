@@ -1,18 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Container, Row, Col, Form, Spinner, Alert } from 'react-bootstrap';
+import { useSelector, useDispatch } from 'react-redux';
 import type { SmartDevice } from '../types';
+import type { RootState } from '../store';
+import { setSearchFilter } from '../store/slices/deviceSlice';
 import DeviceList from '../components/Devices/DeviceList';
 
 const DevicesPage: React.FC = () => {
+  const dispatch = useDispatch();
+  const { filters } = useSelector((state: RootState) => state.devices);
+  
   const [devices, setDevices] = useState<SmartDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
   const searchTimeoutRef = useRef<number | null>(null);
 
+  // Загрузка устройств при монтировании
   useEffect(() => {
-    loadDevices();
+    loadDevices(filters.search);
   }, []);
+
+  // Загрузка устройств при изменении фильтров из Redux
+  useEffect(() => {
+    if (filters.search !== '') {
+      loadDevices(filters.search);
+    }
+  }, [filters.search]);
 
   const loadDevices = async (search?: string) => {
     try {
@@ -42,7 +55,9 @@ const DevicesPage: React.FC = () => {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setSearchTerm(value);
+    
+    // Сохраняем фильтр в Redux store
+    dispatch(setSearchFilter(value));
 
     // Очищаем предыдущий таймер
     if (searchTimeoutRef.current) {
@@ -133,12 +148,17 @@ const DevicesPage: React.FC = () => {
               <Form.Control
                 type="text"
                 placeholder="Поиск устройств по названию..."
-                value={searchTerm}
+                value={filters.search} // Используем значение из Redux
                 onChange={handleSearchChange}
                 size="lg"
               />
               <Form.Text className="text-muted">
                 Начните вводить название устройства - поиск запустится автоматически
+                {filters.search && (
+                  <span className="ms-2">
+                    (фильтр сохранен в Redux: "{filters.search}")
+                  </span>
+                )}
               </Form.Text>
             </Form.Group>
           </div>
