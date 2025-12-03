@@ -1,45 +1,57 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"time"
+
+	"smartdevices/internal/models"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	_ "github.com/lib/pq"
 )
 
 func main() {
-	// Подключение к PostgreSQL
+	// Подключение к PostgreSQL через GORM
 	dsn := "host=localhost user=root password=root dbname=RIP port=5433 sslmode=disable"
-	db, err := sql.Open("postgres", dsn)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Ошибка подключения к БД:", err)
 	}
-	defer db.Close()
 
-	// Проверяем подключение
-	err = db.Ping()
+	// Получаем экземпляр sql.DB для выполнения прямых запросов
+	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatal("Не удалось подключиться к БД:", err)
+		log.Fatal("Ошибка получения sql.DB:", err)
 	}
+	defer sqlDB.Close()
 
 	fmt.Println("✅ Подключение к PostgreSQL установлено")
 
+	// Автоматическая миграция таблиц
+	fmt.Println("🏗️ Создаем/обновляем таблицы...")
+	err = db.AutoMigrate(&models.Client{}, &models.SmartDevice{}, &models.SmartOrder{}, &models.OrderItem{})
+	if err != nil {
+		log.Fatal("Ошибка миграции:", err)
+	}
+	fmt.Println("✅ Таблицы созданы/обновлены")
+
 	// Очищаем старые данные
 	fmt.Println("🧹 Очищаем старые данные...")
-	db.Exec("DELETE FROM order_items")
-	db.Exec("DELETE FROM smart_orders")
-	db.Exec("DELETE FROM smart_devices")
-	db.Exec("DELETE FROM clients")
-	db.Exec("ALTER SEQUENCE clients_id_seq RESTART WITH 1")
-	db.Exec("ALTER SEQUENCE smart_devices_id_seq RESTART WITH 1")
-	db.Exec("ALTER SEQUENCE smart_orders_id_seq RESTART WITH 1")
+	sqlDB.Exec("DELETE FROM order_items")
+	sqlDB.Exec("DELETE FROM smart_orders")
+	sqlDB.Exec("DELETE FROM smart_devices")
+	sqlDB.Exec("DELETE FROM clients")
+	sqlDB.Exec("ALTER SEQUENCE clients_id_seq RESTART WITH 1")
+	sqlDB.Exec("ALTER SEQUENCE smart_devices_id_seq RESTART WITH 1")
+	sqlDB.Exec("ALTER SEQUENCE smart_orders_id_seq RESTART WITH 1")
 
 	// 1. Клиенты
 	fmt.Println("👥 Добавляем клиентов...")
 	var clientID, moderatorID int
-	err = db.QueryRow(`
+	err = sqlDB.QueryRow(`
         INSERT INTO clients (username, password, is_moderator, date_joined)
         VALUES ('client1', 'pass123', FALSE, $1)
         RETURNING id
@@ -48,7 +60,7 @@ func main() {
 		log.Printf("Ошибка добавления client1: %v", err)
 	}
 
-	err = db.QueryRow(`
+	err = sqlDB.QueryRow(`
         INSERT INTO clients (username, password, is_moderator, date_joined)
         VALUES ('moderator1', 'modpass123', TRUE, $1)
         RETURNING id
@@ -108,7 +120,7 @@ func main() {
 		// Генерируем MinIO URL для картинки
 		namespaceURL := fmt.Sprintf("http://localhost:9000/image/%s", d.imageFile)
 
-		_, err := db.Exec(`
+		_, err := sqlDB.Exec(`
             INSERT INTO smart_devices (name, model, avg_data_rate, data_per_hour, namespace_url, description, description_all, protocol, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `, d.name, d.model, d.dataRate, d.dataPerHour, namespaceURL, d.description, d.fullDesc, d.protocol, time.Now())
@@ -123,7 +135,7 @@ func main() {
 	// 3. Демо-заявка (используем реальный clientID)
 	fmt.Println("📋 Создаем демо-заявку...")
 	var orderID int
-	err = db.QueryRow(`
+	err = sqlDB.QueryRow(`
         INSERT INTO smart_orders (status, client_id, address, created_at)
         VALUES ('draft', $1, 'ул. Примерная, д. 1, кв. 5', $2)
         RETURNING id
@@ -146,7 +158,7 @@ func main() {
 	}
 
 	for _, item := range orderItems {
-		_, err := db.Exec(`
+		_, err := sqlDB.Exec(`
             INSERT INTO order_items (order_id, device_id, quantity, created_at)
             VALUES ($1, $2, $3, $4)
         `, orderID, item.deviceID, item.quantity, time.Now())

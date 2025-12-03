@@ -7,6 +7,11 @@ import Breadcrumbs from './components/Layout/Breadcrumbs';
 import HomePage from './pages/HomePage';
 import DevicesPage from './pages/DevicesPage';
 import DeviceDetailPage from './pages/DeviceDetailPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ProfilePage from './pages/ProfilePage';
+import OrdersPage from './pages/OrdersPage';
+import OrderPage from './pages/OrderPage';
 
 function App() {
   return (
@@ -20,8 +25,12 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
-          {/* УБРАТЬ этот маршрут: */}
-          {/* <Route path="/orders" element={<div className="mt-4"><h1>Заявки</h1><p>Страница в разработке</p></div>} /> */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/orders/:id" element={<OrderPage />} />
+          <Route path="/order" element={<OrderPage />} />
         </Routes>
       </Container>
     </Router>

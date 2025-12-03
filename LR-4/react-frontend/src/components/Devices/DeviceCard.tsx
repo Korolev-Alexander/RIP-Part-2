@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from 'react-bootstrap';
 import type { SmartDevice } from '../../types';
+import AddToOrderButton from './AddToOrderButton';
 
 interface DeviceCardProps {
   device: SmartDevice;
@@ -24,12 +25,12 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device }) => {
   return (
     <Card className="h-100 device-card">
       <div className="image-container" style={{ height: '200px', overflow: 'hidden' }}>
-        <Card.Img 
-          variant="top" 
+        <Card.Img
+          variant="top"
           src={device.namespace_url || getDefaultImage()}
           alt={device.name}
-          style={{ 
-            height: '100%', 
+          style={{
+            height: '100%',
             objectFit: 'cover',
             backgroundColor: '#f8f9fa'
           }}
@@ -65,12 +66,13 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device }) => {
           </small>
         </div>
         
-        <div className="d-grid gap-2">
-          <Link to={`/devices/${device.id}`}>
+        <div className="d-flex gap-2">
+          <Link to={`/devices/${device.id}`} className="flex-grow-1">
             <Button variant="outline-primary" size="sm" className="w-100">
               Подробнее
             </Button>
           </Link>
+          <AddToOrderButton device={device} />
         </div>
       </Card.Body>
     </Card>
