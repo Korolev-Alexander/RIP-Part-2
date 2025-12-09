@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Container, Row, Col, Form, Spinner, Alert } from 'react-bootstrap';
-import type { SmartDevice } from '../types';
+import type { SmartDevice } from '../api/Api';
 import DeviceList from '../components/Devices/DeviceList';
 
 const DevicesPage: React.FC = () => {

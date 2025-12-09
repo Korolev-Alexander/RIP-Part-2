@@ -1,95 +1,237 @@
-import React, { useState } from 'react';
-import { Container, Form, Button, Card, Alert } from 'react-bootstrap';
-import { useAppSelector } from '../store/hooks';
+import React, { useState, useEffect } from 'react';
+import { Container, Card, Form, Button, Alert, Spinner, Row, Col } from 'react-bootstrap';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { setUser } from '../store/slices/userSlice';
+import type { RootState } from '../store/index';
+import api from '../api';
+
+// Определяем тип для состояния пользователя
+interface UserState {
+  id: number | null;
+  username: string | null;
+  email: string | null;
+  isAuthenticated: boolean;
+  token: string | null;
+}
 
 const ProfilePage: React.FC = () => {
-  const { user } = useAppSelector((state) => state.auth);
+  // Получаем данные пользователя из Redux
+  const user = useAppSelector((state: RootState) => state.user) as UserState;
+  const dispatch = useAppDispatch();
+  
+  // Состояния для формы
+  const [username, setUsername] = useState(user.username || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [message, setMessage] = useState('');
+  
+  // Состояния для отображения статуса
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const [success, setSuccess] = useState('');
+  
+  // Загружаем актуальные данные пользователя при монтировании
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        setLoading(true);
+        const response = await api.auth.sessionList();
+        if (response.data.user) {
+          const userData = response.data.user;
+          dispatch(setUser({
+            id: userData.id || 0,
+            username: userData.username || '',
+            email: '', // Email не возвращается в API
+            token: '' // Токен не используется, так как используется сессия
+          }));
+          setUsername(userData.username || '');
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки данных пользователя:', err);
+        setError('Не удалось загрузить данные пользователя');
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    if (newPassword !== confirmPassword) {
-      setError('Новые пароли не совпадают');
-      return;
+    if (user.isAuthenticated) {
+      fetchUserData();
+    }
+  }, [user.isAuthenticated, dispatch]);
+  
+  // Валидация формы
+  const validateForm = () => {
+    if (!username.trim()) {
+      setError('Имя пользователя не может быть пустым');
+      return false;
     }
     
-    if (newPassword.length < 6) {
-      setError('Новый пароль должен содержать минимум 6 символов');
-      return;
+    if (newPassword || confirmPassword || currentPassword) {
+      if (!currentPassword) {
+        setError('Введите текущий пароль для изменения данных');
+        return false;
+      }
+      
+      if (newPassword !== confirmPassword) {
+        setError('Новый пароль и подтверждение не совпадают');
+        return false;
+      }
+      
+      if (newPassword.length < 6) {
+        setError('Новый пароль должен содержать минимум 6 символов');
+        return false;
+      }
     }
     
-    // В реальной реализации здесь будет вызов API для смены пароля
-    setMessage('Пароль успешно изменен');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    
-    // Очищаем сообщения через 3 секунды
-    setTimeout(() => {
-      setMessage('');
-    }, 3000);
+    return true;
   };
-
+  
+  // Обработчик отправки формы
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      // Подготавливаем данные для обновления
+      const updateData: any = {
+        id: user.id,
+        username: username
+      };
+      
+      // Добавляем пароль, если он был изменен
+      if (newPassword) {
+        updateData.password = newPassword;
+      }
+      
+      // Выполняем запрос к API для обновления данных пользователя
+      const response = await api.clients.updateUpdate(updateData);
+      
+      if (response.data) {
+        // Обновляем данные пользователя в Redux
+        dispatch(setUser({
+          id: response.data.id || 0,
+          username: response.data.username || '',
+          email: '', // Email не возвращается в API
+          token: '' // Токен не используется, так как используется сессия
+        }));
+        
+        setSuccess('Данные успешно обновлены');
+        // Очищаем поля паролей
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err: any) {
+      console.error('Ошибка обновления профиля:', err);
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else {
+        setError('Ошибка при обновлении данных профиля');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  if (!user.isAuthenticated) {
+    return (
+      <Container className="mt-4">
+        <Alert variant="warning">Для доступа к профилю необходимо авторизоваться</Alert>
+      </Container>
+    );
+  }
+  
   return (
     <Container className="mt-4">
-      <Card>
-        <Card.Header>
-          <h3>Личный кабинет</h3>
-        </Card.Header>
-        <Card.Body>
-          <div className="mb-4">
-            <h5>Информация о пользователе</h5>
-            <p><strong>Имя пользователя:</strong> {user?.username || 'Гость'}</p>
-          </div>
+      <Row className="justify-content-md-center">
+        <Col md={8}>
+          <h2 className="mb-4">Личный кабинет</h2>
           
-          <hr />
+          {loading && (
+            <div className="text-center mb-4">
+              <Spinner animation="border" role="status">
+                <span className="visually-hidden">Загрузка...</span>
+              </Spinner>
+            </div>
+          )}
           
-          <h5 className="mt-4">Смена пароля</h5>
           {error && <Alert variant="danger">{error}</Alert>}
-          {message && <Alert variant="success">{message}</Alert>}
+          {success && <Alert variant="success">{success}</Alert>}
           
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Текущий пароль</Form.Label>
-              <Form.Control
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Новый пароль</Form.Label>
-              <Form.Control
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-              />
-            </Form.Group>
-            
-            <Form.Group className="mb-3">
-              <Form.Label>Подтверждение нового пароля</Form.Label>
-              <Form.Control
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-            </Form.Group>
-            
-            <Button variant="primary" type="submit">
-              Изменить пароль
-            </Button>
-          </Form>
-        </Card.Body>
-      </Card>
+          <Card>
+            <Card.Header>
+              <h5>Информация о пользователе</h5>
+            </Card.Header>
+            <Card.Body>
+              <Form onSubmit={handleSubmit}>
+                <Form.Group className="mb-3" controlId="formUsername">
+                  <Form.Label>Имя пользователя</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    disabled={loading}
+                  />
+                </Form.Group>
+                
+                <hr />
+                
+                <h6>Изменение пароля</h6>
+                
+                <Form.Group className="mb-3" controlId="formCurrentPassword">
+                  <Form.Label>Текущий пароль</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    disabled={loading}
+                    placeholder="Введите текущий пароль"
+                  />
+                </Form.Group>
+                
+                <Form.Group className="mb-3" controlId="formNewPassword">
+                  <Form.Label>Новый пароль</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    disabled={loading}
+                    placeholder="Введите новый пароль"
+                  />
+                </Form.Group>
+                
+                <Form.Group className="mb-3" controlId="formConfirmPassword">
+                  <Form.Label>Подтверждение пароля</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={loading}
+                    placeholder="Подтвердите новый пароль"
+                  />
+                </Form.Group>
+                
+                <div className="d-grid">
+                  <Button 
+                    variant="primary" 
+                    type="submit" 
+                    disabled={loading}
+                  >
+                    {loading ? 'Сохранение...' : 'Сохранить изменения'}
+                  </Button>
+                </div>
+              </Form>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
     </Container>
   );
 };

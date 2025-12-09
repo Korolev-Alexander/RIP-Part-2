@@ -1,120 +1,93 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Table, Card, Button, Form, Row, Col, Alert, Spinner, Badge } from 'react-bootstrap';
+import { Container, Card, ListGroup, Badge, Button, Alert, Spinner } from 'react-bootstrap';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import {
-  updateDeviceQuantity,
-  removeDeviceFromDraft,
-  clearDraftOrder,
-  loadOrdersStart,
-  loadOrdersSuccess,
-  loadOrdersFailure
-} from '../store/slices/orderSlice';
-import { api } from '../services/api';
-import type { SmartOrder, SmartOrderItem } from '../types';
+import { fetchUserOrders } from '../store/slices/orderSlice';
+import type { RootState } from '../store/index';
+import type { SmartOrder, OrderItem as ApiOrderItem } from '../api/Api';
+
+// Определяем типы для состояния пользователя и заявок
+interface UserState {
+  id: number | null;
+  username: string | null;
+  email: string | null;
+  isAuthenticated: boolean;
+  token: string | null;
+}
+
+interface OrderState {
+  id: number | null;
+  items: any[];
+  status: 'draft' | 'submitted' | 'confirmed' | 'shipped' | 'delivered';
+  totalAmount: number;
+  createdAt: string | null;
+  loading: boolean;
+  error: string | null;
+  userOrders: SmartOrder[];
+}
 
 const OrderPage: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { draftOrder, orders, loading, error } = useAppSelector((state) => state.order);
-  const { user } = useAppSelector((state) => state.auth);
-  
-  const [address, setAddress] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [orderData, setOrderData] = useState<SmartOrder | null>(null);
+  const user = useAppSelector((state: RootState) => state.user) as UserState;
+  const orderState = useAppSelector((state: RootState) => state.order) as OrderState;
 
-  // Определяем, является ли заявка черновиком
-  const isDraft = !id && draftOrder;
-  const order = id ? orders.find(o => o.id === parseInt(id)) : draftOrder;
+  // Находим заявку по ID
+  const order = orderState.userOrders.find((o: SmartOrder) => o.id === Number(id));
 
-  // Загружаем данные заявки, если это не черновик
   useEffect(() => {
-    const loadOrder = async () => {
-      if (id) {
-        dispatch(loadOrdersStart());
-        try {
-          const orderResponse = await api.getOrder(parseInt(id));
-          setOrderData(orderResponse);
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : 'Ошибка загрузки заявки';
-          dispatch(loadOrdersFailure(errorMessage));
-        }
-      }
-    };
-
-    loadOrder();
-  }, [id, dispatch]);
-
-  // Если заявка не найдена, перенаправляем на список заявок
-  useEffect(() => {
-    if (!isDraft && !order && !loading && !orderData) {
-      navigate('/orders');
-    }
-  }, [isDraft, order, loading, orderData, navigate]);
-
-  const handleQuantityChange = (deviceId: number, quantity: number) => {
-    if (quantity < 0) return;
-    dispatch(updateDeviceQuantity({ deviceId, quantity }));
-  };
-
-  const handleRemoveItem = (deviceId: number) => {
-    dispatch(removeDeviceFromDraft(deviceId));
-  };
-
-  const handleSubmitOrder = async () => {
-    if (!draftOrder) return;
-    
-    if (!address.trim()) {
-      setSubmitError('Пожалуйста, укажите адрес');
+    // Проверяем авторизацию пользователя
+    if (!user || !user.isAuthenticated) {
+      navigate('/login');
       return;
     }
-    
-    setIsSubmitting(true);
-    setSubmitError('');
-    
-    try {
-      // Вызываем API для сохранения заявки
-      const orderToSubmit = {
-        ...draftOrder,
-        address,
-        status: 'formed'
-      };
-      
-      await api.createOrder(orderToSubmit);
-      
-      // Очищаем черновик после успешной отправки
-      dispatch(clearDraftOrder());
-      
-      // Обновляем список заявок
-      try {
-        const ordersResponse = await api.getOrders();
-        dispatch(loadOrdersSuccess(ordersResponse));
-      } catch (err) {
-        console.error('Ошибка обновления списка заявок:', err);
-      }
-      
-      // Перенаправляем на список заявок
-      navigate('/orders');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Ошибка при отправке заявки';
-      setSubmitError(errorMessage);
-    } finally {
-      setIsSubmitting(false);
+
+    // Если заявка не найдена в хранилище или список заявок пуст, загружаем заявки
+    if (!order && orderState.userOrders.length === 0) {
+      dispatch(fetchUserOrders());
+    }
+  }, [dispatch, user, order, orderState.userOrders, navigate]);
+
+  // Функция для отображения статуса заявки на русском языке
+  const getOrderStatusText = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'Черновик';
+      case 'formed':
+        return 'Сформирована';
+      case 'completed':
+        return 'Завершена';
+      case 'rejected':
+        return 'Отклонена';
+      case 'deleted':
+        return 'Удалена';
+      default:
+        return status;
     }
   };
 
-  const handleCancelOrder = () => {
-    if (window.confirm('Вы уверены, что хотите отменить черновик?')) {
-      dispatch(clearDraftOrder());
-      navigate('/orders');
+  // Функция для получения класса статуса для стилизации
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'warning';
+      case 'formed':
+        return 'info';
+      case 'completed':
+        return 'success';
+      case 'rejected':
+        return 'danger';
+      case 'deleted':
+        return 'secondary';
+      default:
+        return 'secondary';
     }
   };
 
-  if (loading) {
+  if (orderState.loading) {
     return (
-      <Container className="mt-4 d-flex justify-content-center">
+      <Container className="mt-4 text-center">
         <Spinner animation="border" role="status">
           <span className="visually-hidden">Загрузка...</span>
         </Spinner>
@@ -122,148 +95,94 @@ const OrderPage: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (orderState.error) {
     return (
       <Container className="mt-4">
-        <Alert variant="danger">{error}</Alert>
+        <Alert variant="danger">Ошибка: {orderState.error}</Alert>
+        <Button variant="primary" onClick={() => navigate('/orders')}>
+          Вернуться к списку заявок
+        </Button>
       </Container>
     );
   }
 
-  if (!isDraft && !order && !orderData) {
+  if (!order) {
     return (
       <Container className="mt-4">
         <Alert variant="warning">Заявка не найдена</Alert>
+        <Button variant="primary" onClick={() => navigate('/orders')}>
+          Вернуться к списку заявок
+        </Button>
       </Container>
     );
   }
 
-  const items = order?.items || orderData?.items || [];
-  const totalTraffic = items.reduce((sum, item) => sum + (item.data_per_hour * item.quantity), 0);
-  const displayOrder = order || orderData;
-
   return (
     <Container className="mt-4">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2>Детали заявки #{order.id}</h2>
+        <Button variant="secondary" onClick={() => navigate('/orders')}>
+          Назад к списку
+        </Button>
+      </div>
+
+      <Card className="mb-4">
+        <Card.Body>
+          <div className="d-flex justify-content-between">
+            <div>
+              <h5>Информация о заявке</h5>
+              <p className="mb-1">
+                <strong>Статус:</strong>{' '}
+                <Badge bg={getStatusClass(order.status || '')}>
+                  {getOrderStatusText(order.status || '')}
+                </Badge>
+              </p>
+              <p className="mb-1">
+                <strong>Адрес:</strong> {order.address}
+              </p>
+              <p className="mb-1">
+                <strong>Дата создания:</strong>{' '}
+                {new Date(order.created_at || '').toLocaleDateString('ru-RU')}
+              </p>
+              {order.formed_at && (
+                <p className="mb-1">
+                  <strong>Дата формирования:</strong>{' '}
+                  {new Date(order.formed_at).toLocaleDateString('ru-RU')}
+                </p>
+              )}
+              <p className="mb-1">
+                <strong>Трафик:</strong> {order.total_traffic?.toFixed(2)} МБ/мес
+              </p>
+            </div>
+          </div>
+        </Card.Body>
+      </Card>
+
       <Card>
         <Card.Header>
-          <div className="d-flex justify-content-between align-items-center">
-            <h3>
-              {isDraft ? 'Черновик заявки' : `Заявка №${displayOrder?.id}`}
-              {displayOrder?.status && (
-                <Badge bg={
-                  displayOrder.status === 'draft' ? 'secondary' :
-                  displayOrder.status === 'formed' ? 'primary' :
-                  displayOrder.status === 'completed' ? 'success' : 'secondary'
-                } className="ms-2">
-                  {displayOrder.status === 'draft' ? 'Черновик' :
-                   displayOrder.status === 'formed' ? 'Сформирована' :
-                   displayOrder.status === 'completed' ? 'Завершена' : displayOrder.status}
-                </Badge>
-              )}
-            </h3>
-            {isDraft && (
-              <Button variant="outline-danger" size="sm" onClick={handleCancelOrder}>
-                Отменить
-              </Button>
-            )}
-          </div>
+          <h5 className="mb-0">Устройства в заявке</h5>
         </Card.Header>
-        <Card.Body>
-          {isDraft && (
-            <Form.Group className="mb-4">
-              <Form.Label>Адрес установки</Form.Label>
-              <Form.Control
-                type="text"
-                placeholder="Введите адрес установки устройств"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-              />
-            </Form.Group>
-          )}
-          
-          {items.length === 0 ? (
-            <Alert variant="info">В заявке нет устройств</Alert>
-          ) : (
-            <>
-              <Table striped bordered hover>
-                <thead>
-                  <tr>
-                    <th>Устройство</th>
-                    <th>Количество</th>
-                    <th>Трафик (МБ/час)</th>
-                    {isDraft && <th>Действия</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item: SmartOrderItem) => (
-                    <tr key={item.device_id}>
-                      <td>{item.device_name}</td>
-                      <td>
-                        {isDraft ? (
-                          <Form.Control
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleQuantityChange(item.device_id, parseInt(e.target.value) || 0)}
-                            style={{ width: '80px' }}
-                          />
-                        ) : (
-                          item.quantity
-                        )}
-                      </td>
-                      <td>{(item.data_per_hour * item.quantity).toFixed(2)}</td>
-                      {isDraft && (
-                        <td>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleRemoveItem(item.device_id)}
-                          >
-                            Удалить
-                          </Button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-              
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <div>
-                  <strong>Общий трафик:</strong> {totalTraffic.toFixed(2)} МБ/час
-                </div>
-                {isDraft && (
+        <ListGroup variant="flush">
+          {order.items && order.items.length > 0 ? (
+            order.items.map((item: ApiOrderItem) => (
+              <ListGroup.Item key={item.device_id}>
+                <div className="d-flex justify-content-between align-items-center">
                   <div>
-                    <Button
-                      variant="success"
-                      onClick={handleSubmitOrder}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Spinner
-                            as="span"
-                            animation="border"
-                            size="sm"
-                            role="status"
-                            aria-hidden="true"
-                          />
-                          <span className="ms-2">Отправка...</span>
-                        </>
-                      ) : (
-                        'Подтвердить заявку'
-                      )}
-                    </Button>
+                    <h6 className="mb-1">{item.device_name}</h6>
+                    <small className="text-muted">
+                      Трафик: {item.data_per_hour?.toFixed(2)} МБ/час
+                    </small>
                   </div>
-                )}
-              </div>
-            </>
+                  <div className="text-end">
+                    <div>Количество: {item.quantity}</div>
+                  </div>
+                </div>
+              </ListGroup.Item>
+            ))
+          ) : (
+            <ListGroup.Item>В заявке нет устройств</ListGroup.Item>
           )}
-          
-          {submitError && (
-            <Alert variant="danger" className="mt-3">{submitError}</Alert>
-          )}
-        </Card.Body>
+        </ListGroup>
       </Card>
     </Container>
   );

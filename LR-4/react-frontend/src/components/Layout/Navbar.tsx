@@ -2,25 +2,30 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Navbar, Nav, Container, Button } from 'react-bootstrap';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { logout } from '../../store/slices/authSlice';
-import { clearDraftOrder } from '../../store/slices/orderSlice';
+import { clearUser } from '../../store/slices/userSlice';
+import { clearOrder } from '../../store/slices/orderSlice';
+
+// Определяем тип для состояния пользователя
+interface UserState {
+  id: number | null;
+  username: string | null;
+  email: string | null;
+  isAuthenticated: boolean;
+  token: string | null;
+}
 
 const AppNavbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector((state) => state.auth);
-  const { draftOrder } = useAppSelector((state) => state.order);
+  const user = useAppSelector((state) => state.user) as UserState;
 
   const handleLogout = () => {
     // Очищаем состояние авторизации
-    dispatch(logout());
+    dispatch(clearUser());
     
-    // Очищаем черновик заявки
-    dispatch(clearDraftOrder());
-    
-    // Очищаем localStorage
-    localStorage.removeItem('user');
+    // Очищаем заявку
+    dispatch(clearOrder());
     
     // Перенаправляем на главную страницу
     navigate('/');
@@ -54,15 +59,6 @@ const AppNavbar: React.FC = () => {
               <>
                 <Nav.Link as={Link} to="/profile">
                   {user.username}
-                </Nav.Link>
-                <Nav.Link as={Link} to="/order">
-                  <Button
-                    variant={draftOrder ? "warning" : "outline-light"}
-                    size="sm"
-                    disabled={!draftOrder}
-                  >
-                    🛒 {draftOrder ? `(${draftOrder.items.length})` : ''}
-                  </Button>
                 </Nav.Link>
                 <Nav.Link>
                   <Button variant="outline-light" size="sm" onClick={handleLogout}>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Badge } from 'react-bootstrap';
-import type { SmartDevice } from '../../types';
+import type { SmartDevice } from '../../api/Api';
 import AddToOrderButton from './AddToOrderButton';
 
 interface DeviceCardProps {
@@ -13,7 +13,8 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device }) => {
     return '/default-device.png';
   };
 
-  const getProtocolColor = (protocol: string) => {
+  const getProtocolColor = (protocol: string | undefined) => {
+    if (!protocol) return 'secondary';
     switch (protocol) {
       case 'Wi-Fi': return 'primary';
       case 'Bluetooth': return 'info';

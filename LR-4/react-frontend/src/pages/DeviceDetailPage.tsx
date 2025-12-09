@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Spinner, Alert } from 'react-bootstrap';
-import type { SmartDevice } from '../types';
-import { api } from '../services/api';
+import type { SmartDevice } from '../api/Api';
+import api from '../api';
 
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,8 +19,8 @@ const DeviceDetailPage: React.FC = () => {
   const loadDevice = async (deviceId: number) => {
     try {
       setLoading(true);
-      const deviceData = await api.getDevice(deviceId);
-      setDevice(deviceData);
+      const response = await api.smartDevices.smartDevicesDetail(deviceId);
+      setDevice(response.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load device');
     } finally {
