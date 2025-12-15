@@ -17,22 +17,20 @@ function App() {
   return (
     <Router>
       <AppNavbar />
-      <Container fluid>
-        <Container className="mt-3">
-          <Breadcrumbs />
-        </Container>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/devices" element={<DevicesPage />} />
-          <Route path="/devices/:id" element={<DeviceDetailPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/orders/:id" element={<OrderPage />} />
-          <Route path="/order" element={<OrderPage />} />
-        </Routes>
+      <Container className="mt-3">
+        <Breadcrumbs />
       </Container>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/devices/:id" element={<DeviceDetailPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders/:id" element={<OrderPage />} />
+        <Route path="/order" element={<OrderPage />} />
+      </Routes>
     </Router>
   );
 }

@@ -66,9 +66,9 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <Container className="mt-5">
+    <Container className="mt-4">
       <Row className="justify-content-md-center">
-        <Col md={6}>
+        <Col xs={12} md={10} lg={8}>
           <h2 className="text-center mb-4">Вход в систему</h2>
           
           {error && <Alert variant="danger">{error}</Alert>}
@@ -97,9 +97,9 @@ const LoginPage: React.FC = () => {
             </Form.Group>
             
             <div className="d-grid">
-              <Button 
-                variant="primary" 
-                type="submit" 
+              <Button
+                variant="primary"
+                type="submit"
                 disabled={loading}
               >
                 {loading ? 'Вход...' : 'Войти'}

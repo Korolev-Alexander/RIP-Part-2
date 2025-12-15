@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import axios from 'axios';
 import api from '../../api';
 import type { SmartOrder } from '../../api/Api';
 
@@ -25,6 +26,8 @@ interface OrderState {
   loading: boolean;
   error: string | null;
   userOrders: SmartOrder[];
+  draftOrder: SmartOrder | null;
+  cartItemCount: number;
 }
 
 const initialState: OrderState = {
@@ -37,6 +40,8 @@ const initialState: OrderState = {
   loading: false,
   error: null,
   userOrders: [],
+  draftOrder: null,
+  cartItemCount: 0,
 };
 
 // Async Thunk функции
@@ -91,6 +96,85 @@ export const deleteOrder = createAsyncThunk(
       return id;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.message || 'Ошибка при удалении заявки');
+    }
+  }
+);
+
+// Получение информации о корзине (черновой заявке)
+export const fetchDraftOrder = createAsyncThunk(
+  'order/fetchDraftOrder',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.smartOrders.cartList();
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Ошибка при загрузке корзины');
+    }
+  }
+);
+
+// Добавление устройства в корзину
+export const addDeviceToOrder = createAsyncThunk(
+  'order/addDeviceToOrder',
+  async (deviceId: number, { rejectWithValue }) => {
+    try {
+      // Используем прямой axios запрос для POST /api/order-items
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+      const response = await axios.post(
+        `${baseURL}/order-items`,
+        {
+          device_id: deviceId,
+          quantity: 1
+        },
+        {
+          withCredentials: true
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Ошибка при добавлении устройства');
+    }
+  }
+);
+
+// Удаление устройства из корзины
+export const removeDeviceFromOrder = createAsyncThunk(
+  'order/removeDeviceFromOrder',
+  async (deviceId: number, { rejectWithValue }) => {
+    try {
+      await api.orderItems.orderItemsDelete(deviceId);
+      return deviceId;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Ошибка при удалении устройства');
+    }
+  }
+);
+
+// Обновление количества устройства в корзине
+export const updateDeviceQuantity = createAsyncThunk(
+  'order/updateDeviceQuantity',
+  async ({ deviceId, quantity }: { deviceId: number; quantity: number }, { rejectWithValue }) => {
+    try {
+      const response = await api.orderItems.orderItemsUpdate(deviceId, { quantity });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Ошибка при обновлении количества');
+    }
+  }
+);
+
+// Оформление черновой заявки
+export const submitDraftOrder = createAsyncThunk(
+  'order/submitDraftOrder',
+  async ({ orderId, address }: { orderId: number; address: string }, { rejectWithValue }) => {
+    try {
+      // Сначала обновляем адрес
+      await api.smartOrders.smartOrdersUpdate(orderId, { address });
+      // Затем формируем заявку
+      const response = await api.smartOrders.formUpdate(orderId);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Ошибка при оформлении заявки');
     }
   }
 );
@@ -207,6 +291,78 @@ export const orderSlice = createSlice({
         state.userOrders = state.userOrders.filter(order => order.id !== action.payload);
       })
       .addCase(deleteOrder.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // fetchDraftOrder
+      .addCase(fetchDraftOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchDraftOrder.fulfilled, (state, action: PayloadAction<any>) => {
+        state.loading = false;
+        state.cartItemCount = action.payload.count || 0;
+        // Если есть order_id, загружаем полную информацию о заявке
+        if (action.payload.order_id) {
+          state.id = action.payload.order_id;
+        }
+      })
+      .addCase(fetchDraftOrder.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+        state.cartItemCount = 0;
+      })
+      // addDeviceToOrder
+      .addCase(addDeviceToOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(addDeviceToOrder.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(addDeviceToOrder.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // removeDeviceFromOrder
+      .addCase(removeDeviceFromOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(removeDeviceFromOrder.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(removeDeviceFromOrder.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // updateDeviceQuantity
+      .addCase(updateDeviceQuantity.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateDeviceQuantity.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(updateDeviceQuantity.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // submitDraftOrder
+      .addCase(submitDraftOrder.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(submitDraftOrder.fulfilled, (state, action: PayloadAction<SmartOrder>) => {
+        state.loading = false;
+        // Добавляем оформленную заявку в список
+        state.userOrders.push(action.payload);
+        // Очищаем корзину
+        state.draftOrder = null;
+        state.cartItemCount = 0;
+        state.id = null;
+      })
+      .addCase(submitDraftOrder.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
       });

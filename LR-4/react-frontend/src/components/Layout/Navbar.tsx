@@ -33,7 +33,7 @@ const AppNavbar: React.FC = () => {
 
   return (
     <Navbar bg="dark" variant="dark" expand="lg">
-      <Container>
+      <Container fluid>
         <Navbar.Brand as={Link} to="/">
           🏠 Умный Дом
         </Navbar.Brand>

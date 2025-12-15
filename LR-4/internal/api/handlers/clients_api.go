@@ -27,15 +27,6 @@ func NewClientAPIHandler(db *gorm.DB) *ClientAPIHandler {
 
 // GET /api/clients - список клиентов
 func (h *ClientAPIHandler) GetClients(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var clients []models.Client
 	result := h.db.Find(&clients)
 	if result.Error != nil {
@@ -54,15 +45,6 @@ func (h *ClientAPIHandler) GetClients(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/clients/{id} - один клиент
 func (h *ClientAPIHandler) GetClient(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/clients/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -83,15 +65,6 @@ func (h *ClientAPIHandler) GetClient(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/clients/register - создание клиента
 func (h *ClientAPIHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var req serializers.ClientRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -122,15 +95,6 @@ func (h *ClientAPIHandler) CreateClient(w http.ResponseWriter, r *http.Request) 
 
 // PUT /api/clients/update - изменение клиента
 func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	// Получаем текущего пользователя
 	currentUser := h.authMiddleware.GetCurrentUser(r)
 	if currentUser == nil {
@@ -175,15 +139,6 @@ func (h *ClientAPIHandler) UpdateClient(w http.ResponseWriter, r *http.Request) 
 
 // POST /api/clients/login - аутентификация
 func (h *ClientAPIHandler) Login(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var req serializers.ClientLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -225,15 +180,6 @@ func (h *ClientAPIHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/clients/logout - деавторизация
 func (h *ClientAPIHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	cookie, err := r.Cookie("session_id")
 	if err == nil {
 		h.authMiddleware.DeleteSession(cookie.Value)

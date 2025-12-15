@@ -1,40 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Card, ListGroup, Badge, Button, Alert, Spinner } from 'react-bootstrap';
+import { Container, Card, ListGroup, Badge, Button, Alert, Spinner, Form, InputGroup } from 'react-bootstrap';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { fetchUserOrders } from '../store/slices/orderSlice';
+import { fetchUserOrders, removeDeviceFromOrder, updateDeviceQuantity, submitDraftOrder } from '../store/slices/orderSlice';
 import type { RootState } from '../store/index';
 import type { SmartOrder, OrderItem as ApiOrderItem } from '../api/Api';
-
-// Определяем типы для состояния пользователя и заявок
-interface UserState {
-  id: number | null;
-  username: string | null;
-  email: string | null;
-  isAuthenticated: boolean;
-  token: string | null;
-}
-
-interface OrderState {
-  id: number | null;
-  items: any[];
-  status: 'draft' | 'submitted' | 'confirmed' | 'shipped' | 'delivered';
-  totalAmount: number;
-  createdAt: string | null;
-  loading: boolean;
-  error: string | null;
-  userOrders: SmartOrder[];
-}
 
 const OrderPage: React.FC = () => {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state: RootState) => state.user) as UserState;
-  const orderState = useAppSelector((state: RootState) => state.order) as OrderState;
+  const user = useAppSelector((state: RootState) => state.user);
+  const orderState = useAppSelector((state: RootState) => state.order);
+  
+  const [address, setAddress] = useState('');
+  const [quantities, setQuantities] = useState<{ [key: number]: number }>({});
 
-  // Находим заявку по ID
-  const order = orderState.userOrders.find((o: SmartOrder) => o.id === Number(id));
+  // Если id не передан, это корзина (черновая заявка)
+  const isDraft = !id;
+  
+  // Находим заявку по ID или берем черновик
+  const order = isDraft 
+    ? orderState.userOrders?.find((o: SmartOrder) => o.status === 'draft')
+    : orderState.userOrders?.find((o: SmartOrder) => o.id === Number(id));
 
   useEffect(() => {
     // Проверяем авторизацию пользователя
@@ -43,11 +31,71 @@ const OrderPage: React.FC = () => {
       return;
     }
 
-    // Если заявка не найдена в хранилище или список заявок пуст, загружаем заявки
-    if (!order && orderState.userOrders.length === 0) {
+    // Загружаем заявки пользователя
+    if (user.isAuthenticated) {
       dispatch(fetchUserOrders());
     }
-  }, [dispatch, user, order, orderState.userOrders, navigate]);
+  }, [dispatch, user, navigate]);
+
+  useEffect(() => {
+    // Инициализируем количества из заявки
+    if (order && order.items) {
+      const initialQuantities: { [key: number]: number } = {};
+      order.items.forEach((item: ApiOrderItem) => {
+        initialQuantities[item.device_id!] = item.quantity || 1;
+      });
+      setQuantities(initialQuantities);
+      
+      // Устанавливаем адрес из заявки
+      if (order.address) {
+        setAddress(order.address);
+      }
+    }
+  }, [order]);
+
+  const handleRemoveDevice = async (deviceId: number) => {
+    try {
+      await dispatch(removeDeviceFromOrder(deviceId)).unwrap();
+      // Перезагружаем заявки
+      await dispatch(fetchUserOrders()).unwrap();
+    } catch (error) {
+      console.error('Ошибка при удалении устройства:', error);
+    }
+  };
+
+  const handleQuantityChange = async (deviceId: number, newQuantity: number) => {
+    if (newQuantity < 1) return;
+    
+    setQuantities(prev => ({ ...prev, [deviceId]: newQuantity }));
+    
+    try {
+      await dispatch(updateDeviceQuantity({ deviceId, quantity: newQuantity })).unwrap();
+      // Перезагружаем заявки
+      await dispatch(fetchUserOrders()).unwrap();
+    } catch (error) {
+      console.error('Ошибка при обновлении количества:', error);
+    }
+  };
+
+  const handleSubmitOrder = async () => {
+    if (!order || !order.id) {
+      alert('Заявка не найдена');
+      return;
+    }
+
+    if (!address.trim()) {
+      alert('Пожалуйста, укажите адрес доставки');
+      return;
+    }
+
+    try {
+      await dispatch(submitDraftOrder({ orderId: order.id, address })).unwrap();
+      alert('Заявка успешно оформлена!');
+      navigate('/orders');
+    } catch (error: any) {
+      alert('Ошибка при оформлении заявки: ' + (error || 'Неизвестная ошибка'));
+    }
+  };
 
   // Функция для отображения статуса заявки на русском языке
   const getOrderStatusText = (status: string) => {
@@ -99,8 +147,8 @@ const OrderPage: React.FC = () => {
     return (
       <Container className="mt-4">
         <Alert variant="danger">Ошибка: {orderState.error}</Alert>
-        <Button variant="primary" onClick={() => navigate('/orders')}>
-          Вернуться к списку заявок
+        <Button variant="primary" onClick={() => navigate(isDraft ? '/devices' : '/orders')}>
+          {isDraft ? 'Вернуться к устройствам' : 'Вернуться к списку заявок'}
         </Button>
       </Container>
     );
@@ -109,9 +157,11 @@ const OrderPage: React.FC = () => {
   if (!order) {
     return (
       <Container className="mt-4">
-        <Alert variant="warning">Заявка не найдена</Alert>
-        <Button variant="primary" onClick={() => navigate('/orders')}>
-          Вернуться к списку заявок
+        <Alert variant="warning">
+          {isDraft ? 'Корзина пуста. Добавьте устройства из каталога.' : 'Заявка не найдена'}
+        </Alert>
+        <Button variant="primary" onClick={() => navigate(isDraft ? '/devices' : '/orders')}>
+          {isDraft ? 'Перейти к устройствам' : 'Вернуться к списку заявок'}
         </Button>
       </Container>
     );
@@ -120,45 +170,47 @@ const OrderPage: React.FC = () => {
   return (
     <Container className="mt-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>Детали заявки #{order.id}</h2>
-        <Button variant="secondary" onClick={() => navigate('/orders')}>
-          Назад к списку
+        <h2>{isDraft ? 'Моя корзина (Черновик заявки)' : `Детали заявки #${order.id}`}</h2>
+        <Button variant="secondary" onClick={() => navigate(isDraft ? '/devices' : '/orders')}>
+          {isDraft ? 'Продолжить покупки' : 'Назад к списку'}
         </Button>
       </div>
 
-      <Card className="mb-4">
-        <Card.Body>
-          <div className="d-flex justify-content-between">
-            <div>
-              <h5>Информация о заявке</h5>
-              <p className="mb-1">
-                <strong>Статус:</strong>{' '}
-                <Badge bg={getStatusClass(order.status || '')}>
-                  {getOrderStatusText(order.status || '')}
-                </Badge>
-              </p>
-              <p className="mb-1">
-                <strong>Адрес:</strong> {order.address}
-              </p>
-              <p className="mb-1">
-                <strong>Дата создания:</strong>{' '}
-                {new Date(order.created_at || '').toLocaleDateString('ru-RU')}
-              </p>
-              {order.formed_at && (
+      {!isDraft && (
+        <Card className="mb-4">
+          <Card.Body>
+            <div className="d-flex justify-content-between">
+              <div>
+                <h5>Информация о заявке</h5>
                 <p className="mb-1">
-                  <strong>Дата формирования:</strong>{' '}
-                  {new Date(order.formed_at).toLocaleDateString('ru-RU')}
+                  <strong>Статус:</strong>{' '}
+                  <Badge bg={getStatusClass(order.status || '')}>
+                    {getOrderStatusText(order.status || '')}
+                  </Badge>
                 </p>
-              )}
-              <p className="mb-1">
-                <strong>Трафик:</strong> {order.total_traffic?.toFixed(2)} МБ/мес
-              </p>
+                <p className="mb-1">
+                  <strong>Адрес:</strong> {order.address}
+                </p>
+                <p className="mb-1">
+                  <strong>Дата создания:</strong>{' '}
+                  {new Date(order.created_at || '').toLocaleDateString('ru-RU')}
+                </p>
+                {order.formed_at && (
+                  <p className="mb-1">
+                    <strong>Дата формирования:</strong>{' '}
+                    {new Date(order.formed_at).toLocaleDateString('ru-RU')}
+                  </p>
+                )}
+                <p className="mb-1">
+                  <strong>Трафик:</strong> {order.total_traffic?.toFixed(2)} МБ/мес
+                </p>
+              </div>
             </div>
-          </div>
-        </Card.Body>
-      </Card>
+          </Card.Body>
+        </Card>
+      )}
 
-      <Card>
+      <Card className="mb-4">
         <Card.Header>
           <h5 className="mb-0">Устройства в заявке</h5>
         </Card.Header>
@@ -167,14 +219,56 @@ const OrderPage: React.FC = () => {
             order.items.map((item: ApiOrderItem) => (
               <ListGroup.Item key={item.device_id}>
                 <div className="d-flex justify-content-between align-items-center">
-                  <div>
+                  <div className="flex-grow-1">
                     <h6 className="mb-1">{item.device_name}</h6>
                     <small className="text-muted">
                       Трафик: {item.data_per_hour?.toFixed(2)} МБ/час
                     </small>
                   </div>
-                  <div className="text-end">
-                    <div>Количество: {item.quantity}</div>
+                  <div className="d-flex align-items-center gap-3">
+                    {isDraft ? (
+                      <>
+                        <InputGroup style={{ width: '150px' }}>
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            onClick={() => handleQuantityChange(item.device_id!, quantities[item.device_id!] - 1)}
+                            disabled={quantities[item.device_id!] <= 1}
+                          >
+                            -
+                          </Button>
+                          <Form.Control
+                            type="number"
+                            size="sm"
+                            value={quantities[item.device_id!] || 1}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              if (!isNaN(val) && val > 0) {
+                                handleQuantityChange(item.device_id!, val);
+                              }
+                            }}
+                            min="1"
+                            className="text-center"
+                          />
+                          <Button
+                            variant="outline-secondary"
+                            size="sm"
+                            onClick={() => handleQuantityChange(item.device_id!, quantities[item.device_id!] + 1)}
+                          >
+                            +
+                          </Button>
+                        </InputGroup>
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          onClick={() => handleRemoveDevice(item.device_id!)}
+                        >
+                          Удалить
+                        </Button>
+                      </>
+                    ) : (
+                      <div>Количество: {item.quantity}</div>
+                    )}
                   </div>
                 </div>
               </ListGroup.Item>
@@ -184,6 +278,48 @@ const OrderPage: React.FC = () => {
           )}
         </ListGroup>
       </Card>
+
+      {isDraft && order.items && order.items.length > 0 && (
+        <Card>
+          <Card.Body>
+            <h5 className="mb-3">Оформление заявки</h5>
+            <Form.Group className="mb-3">
+              <Form.Label>Адрес доставки *</Form.Label>
+              <Form.Control
+                type="text"
+                placeholder="Введите адрес доставки"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                required
+              />
+            </Form.Group>
+            <div className="d-grid">
+              <Button
+                variant="success"
+                size="lg"
+                onClick={handleSubmitOrder}
+                disabled={!address.trim() || orderState.loading}
+              >
+                {orderState.loading ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Оформление...
+                  </>
+                ) : (
+                  'Оформить заявку'
+                )}
+              </Button>
+            </div>
+          </Card.Body>
+        </Card>
+      )}
     </Container>
   );
 };

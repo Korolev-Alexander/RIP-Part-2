@@ -19,8 +19,10 @@ const OrdersPage: React.FC = () => {
       return;
     }
 
-    // Загружаем заявки пользователя
-    dispatch(fetchUserOrders());
+    // Загружаем заявки пользователя только если пользователь авторизован
+    if (user.isAuthenticated) {
+      dispatch(fetchUserOrders());
+    }
   }, [dispatch, user, navigate]);
 
   const handleViewOrder = (orderId: number) => {
@@ -81,7 +83,7 @@ const OrdersPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {userOrders.length === 0 ? (
+          {!userOrders || userOrders.length === 0 ? (
             <Card>
               <Card.Body>
                 <Card.Text className="text-center">

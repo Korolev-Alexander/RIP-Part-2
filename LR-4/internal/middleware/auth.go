@@ -134,8 +134,8 @@ func (a *AuthMiddleware) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   86400, // 24 часа
 		HttpOnly: true,
-		Secure:   false, // true в production
-		SameSite: http.SameSiteLaxMode,
+		Secure:   false,                // true в production
+		SameSite: http.SameSiteLaxMode, // Для localhost без HTTPS
 	})
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -163,6 +163,7 @@ func (a *AuthMiddleware) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, // Для localhost без HTTPS
 	})
 
 	json.NewEncoder(w).Encode(map[string]interface{}{

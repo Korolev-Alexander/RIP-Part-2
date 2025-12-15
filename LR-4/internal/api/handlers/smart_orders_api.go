@@ -28,21 +28,8 @@ func NewSmartOrderAPIHandler(db *gorm.DB) *SmartOrderAPIHandler {
 
 // GET /api/smart-orders/cart - иконка корзины
 func (h *SmartOrderAPIHandler) GetCart(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	var order models.SmartOrder
 	result := h.db.Where("status = ? AND client_id = ?", "draft", currentUser.ClientID).First(&order)
@@ -72,23 +59,10 @@ func (h *SmartOrderAPIHandler) GetCart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// GET /api/smart-orders - список заявок (кроме удаленных и черновика)
+// GET /api/smart-orders - список заявок
 func (h *SmartOrderAPIHandler) GetSmartOrders(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	status := r.URL.Query().Get("status")
 	dateFromStr := r.URL.Query().Get("date_from")
@@ -97,9 +71,9 @@ func (h *SmartOrderAPIHandler) GetSmartOrders(w http.ResponseWriter, r *http.Req
 	var orders []models.SmartOrder
 	query := h.db.Preload("Client").Preload("Moderator")
 
-	// Если не модератор - показываем только свои заявки
+	// Если не модератор - показываем только свои заявки (включая черновики, но не удаленные)
 	if !currentUser.IsModerator {
-		query = query.Where("client_id = ?", currentUser.ClientID)
+		query = query.Where("client_id = ? AND status != ?", currentUser.ClientID, "deleted")
 	} else {
 		// Модераторы не видят черновики и удаленные
 		query = query.Where("status != ? AND status != ?", "deleted", "draft")
@@ -152,21 +126,8 @@ func (h *SmartOrderAPIHandler) GetSmartOrders(w http.ResponseWriter, r *http.Req
 
 // GET /api/smart-orders/{id} - одна заявка
 func (h *SmartOrderAPIHandler) GetSmartOrder(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)
@@ -210,21 +171,8 @@ func (h *SmartOrderAPIHandler) GetSmartOrder(w http.ResponseWriter, r *http.Requ
 
 // PUT /api/smart-orders/{id} - изменение полей заявки
 func (h *SmartOrderAPIHandler) UpdateSmartOrder(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)
@@ -265,21 +213,8 @@ func (h *SmartOrderAPIHandler) UpdateSmartOrder(w http.ResponseWriter, r *http.R
 
 // PUT /api/smart-orders/{id}/form - формирование заявки
 func (h *SmartOrderAPIHandler) FormSmartOrder(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	idStr = strings.TrimSuffix(idStr, "/form")
@@ -321,21 +256,8 @@ func (h *SmartOrderAPIHandler) FormSmartOrder(w http.ResponseWriter, r *http.Req
 
 // PUT /api/smart-orders/{id}/complete - завершение заявки
 func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Проверяем права модератора
+	// Проверяем права модератора (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil || !currentUser.IsModerator {
-		http.Error(w, `{"error": "Moderator access required"}`, http.StatusForbidden)
-		return
-	}
 
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	idStr = strings.TrimSuffix(idStr, "/complete")
@@ -391,7 +313,7 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 	now := time.Now()
 	order.Status = "completed"
 	order.CompletedAt = &now
-	order.ModeratorID = &currentUser.ClientID
+	order.ModeratorID = uintPtr(currentUser.ClientID)
 	order.TotalTraffic = totalTraffic
 
 	h.db.Save(&order)
@@ -416,21 +338,8 @@ func (h *SmartOrderAPIHandler) CompleteSmartOrder(w http.ResponseWriter, r *http
 
 // DELETE /api/smart-orders/{id} - удаление заявки
 func (h *SmartOrderAPIHandler) DeleteSmartOrder(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	// Получаем текущего пользователя
+	// Получаем текущего пользователя (уже проверен через middleware)
 	currentUser := h.authMiddleware.GetCurrentUser(r)
-	if currentUser == nil {
-		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
-		return
-	}
 
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-orders/")
 	id, err := strconv.Atoi(idStr)

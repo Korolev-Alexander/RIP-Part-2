@@ -32,15 +32,6 @@ func NewSmartDeviceAPIHandler(db *gorm.DB) *SmartDeviceAPIHandler {
 
 // GET /api/smart-devices - список с фильтрацией
 func (h *SmartDeviceAPIHandler) GetSmartDevices(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	search := r.URL.Query().Get("search")
 	protocol := r.URL.Query().Get("protocol")
 
@@ -73,15 +64,6 @@ func (h *SmartDeviceAPIHandler) GetSmartDevices(w http.ResponseWriter, r *http.R
 
 // GET /api/smart-devices/{id} - одна запись
 func (h *SmartDeviceAPIHandler) GetSmartDevice(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -102,15 +84,6 @@ func (h *SmartDeviceAPIHandler) GetSmartDevice(w http.ResponseWriter, r *http.Re
 
 // POST /api/smart-devices - добавление устройства
 func (h *SmartDeviceAPIHandler) CreateSmartDevice(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var req serializers.SmartDeviceCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -147,15 +120,6 @@ func (h *SmartDeviceAPIHandler) CreateSmartDevice(w http.ResponseWriter, r *http
 
 // PUT /api/smart-devices/{id} - изменение устройства
 func (h *SmartDeviceAPIHandler) UpdateSmartDevice(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -193,15 +157,6 @@ func (h *SmartDeviceAPIHandler) UpdateSmartDevice(w http.ResponseWriter, r *http
 
 // DELETE /api/smart-devices/{id} - удаление устройства (БЕЗ удаления изображения из MinIO)
 func (h *SmartDeviceAPIHandler) DeleteSmartDevice(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -228,15 +183,6 @@ func (h *SmartDeviceAPIHandler) DeleteSmartDevice(w http.ResponseWriter, r *http
 
 // POST /api/smart-devices/{id}/image - добавление изображения
 func (h *SmartDeviceAPIHandler) UploadDeviceImage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	// Парсим multipart form
 	err := r.ParseMultipartForm(32 << 20) // 32 MB max
 	if err != nil {
@@ -309,15 +255,6 @@ func (h *SmartDeviceAPIHandler) UploadDeviceImage(w http.ResponseWriter, r *http
 
 // DELETE /api/smart-devices/{id}/image - удаление изображения устройства
 func (h *SmartDeviceAPIHandler) DeleteDeviceImage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/smart-devices/")
 	idStr = strings.TrimSuffix(idStr, "/image")
 	id, err := strconv.Atoi(idStr)

@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, Row, Col, Form, Spinner, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Form, Spinner, Alert, Button, Badge } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 import type { SmartDevice } from '../api/Api';
 import DeviceList from '../components/Devices/DeviceList';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { fetchDraftOrder } from '../store/slices/orderSlice';
 
 const DevicesPage: React.FC = () => {
   const [devices, setDevices] = useState<SmartDevice[]>([]);
@@ -9,10 +12,33 @@ const DevicesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const searchTimeoutRef = useRef<number | null>(null);
+  
+  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user);
+  const order = useAppSelector((state) => state.order);
+  
+  // Используем счетчик из серверной корзины
+  const totalItems = order.cartItemCount;
+  
+  const handleCartClick = () => {
+    if (!user.isAuthenticated) {
+      // Если пользователь не авторизован, перенаправляем на страницу входа
+      navigate('/login');
+    } else {
+      // Если авторизован, переходим к заявке
+      navigate('/order');
+    }
+  };
 
   useEffect(() => {
     loadDevices();
-  }, []);
+    
+    // Загружаем информацию о корзине, если пользователь авторизован
+    if (user.isAuthenticated) {
+      dispatch(fetchDraftOrder());
+    }
+  }, [user.isAuthenticated, dispatch]);
 
   const loadDevices = async (search?: string) => {
     try {
@@ -123,10 +149,34 @@ const DevicesPage: React.FC = () => {
 
   return (
     <Container className="mt-4">
+      <Row className="mb-4 align-items-center">
+        <Col>
+          <h1 className="mb-0">Умные устройства</h1>
+        </Col>
+        <Col xs="auto">
+          <Button 
+            variant="primary" 
+            onClick={handleCartClick}
+            className="position-relative"
+            size="lg"
+          >
+            <span className="fs-4">🛒</span>
+            {user.isAuthenticated && totalItems > 0 && (
+              <Badge 
+                bg="danger" 
+                pill 
+                className="position-absolute top-0 start-100 translate-middle"
+              >
+                {totalItems}
+              </Badge>
+            )}
+            <span className="ms-2">Моя заявка</span>
+          </Button>
+        </Col>
+      </Row>
+      
       <Row>
         <Col>
-          <h1 className="mb-4">Умные устройства</h1>
-          
           {/* Поисковая строка */}
           <div className="mb-4">
             <Form.Group>

@@ -24,17 +24,89 @@ func NewOrderItemAPIHandler(db *gorm.DB) *OrderItemAPIHandler {
 	}
 }
 
-// PUT /api/order-items/{deviceId} - изменение количества
-func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+// POST /api/order-items - добавление устройства в корзину
+func (h *OrderItemAPIHandler) AddOrderItem(w http.ResponseWriter, r *http.Request) {
+	// Получаем текущего пользователя
+	currentUser := h.authMiddleware.GetCurrentUser(r)
+	if currentUser == nil {
+		http.Error(w, `{"error": "Authentication required"}`, http.StatusUnauthorized)
 		return
 	}
 
+	var request struct {
+		DeviceID int `json:"device_id"`
+		Quantity int `json:"quantity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if request.Quantity <= 0 {
+		request.Quantity = 1
+	}
+
+	// Проверяем существование устройства
+	var device models.SmartDevice
+	if result := h.db.First(&device, request.DeviceID); result.Error != nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
+		return
+	}
+
+	// Ищем или создаем черновую заявку
+	var order models.SmartOrder
+	result := h.db.Where("status = ? AND client_id = ?", "draft", currentUser.ClientID).First(&order)
+
+	if result.Error != nil {
+		// Создаем новую корзину
+		order = models.SmartOrder{
+			Status:   "draft",
+			ClientID: currentUser.ClientID,
+		}
+		h.db.Create(&order)
+		log.Printf("📝 Создана новая корзина ID: %d для пользователя %d", order.ID, currentUser.ClientID)
+	}
+
+	// Ищем существующий OrderItem
+	var existingOrderItem models.OrderItem
+	findResult := h.db.Where("order_id = ? AND device_id = ?", order.ID, request.DeviceID).First(&existingOrderItem)
+
+	if findResult.Error == nil {
+		// Увеличиваем количество
+		existingOrderItem.Quantity += request.Quantity
+		h.db.Save(&existingOrderItem)
+		log.Printf("➕ Увеличено количество устройства %d в корзине %d: %d шт.", request.DeviceID, order.ID, existingOrderItem.Quantity)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"order_id":  order.ID,
+			"device_id": existingOrderItem.DeviceID,
+			"quantity":  existingOrderItem.Quantity,
+			"updated":   true,
+		})
+	} else {
+		// Создаем новый OrderItem
+		orderItem := models.OrderItem{
+			OrderID:  order.ID,
+			DeviceID: uint(request.DeviceID),
+			Quantity: request.Quantity,
+		}
+		h.db.Create(&orderItem)
+		log.Printf("🆕 Добавлено устройство %d в корзину %d", request.DeviceID, order.ID)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"order_id":  order.ID,
+			"device_id": orderItem.DeviceID,
+			"quantity":  orderItem.Quantity,
+			"created":   true,
+		})
+	}
+}
+
+// PUT /api/order-items/{deviceId} - изменение количества
+func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Request) {
 	// Получаем текущего пользователя
 	currentUser := h.authMiddleware.GetCurrentUser(r)
 	if currentUser == nil {
@@ -92,15 +164,6 @@ func (h *OrderItemAPIHandler) UpdateOrderItem(w http.ResponseWriter, r *http.Req
 
 // DELETE /api/order-items/{deviceId} - удаление из заявки
 func (h *OrderItemAPIHandler) DeleteOrderItem(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	// Получаем текущего пользователя
 	currentUser := h.authMiddleware.GetCurrentUser(r)
 	if currentUser == nil {

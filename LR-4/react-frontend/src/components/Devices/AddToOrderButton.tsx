@@ -1,7 +1,8 @@
 import React from 'react';
 import { Button, Spinner } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { addItem } from '../../store/slices/orderSlice';
+import { addDeviceToOrder, fetchDraftOrder } from '../../store/slices/orderSlice';
 import type { SmartDevice } from '../../api/Api';
 
 interface AddToOrderButtonProps {
@@ -10,24 +11,34 @@ interface AddToOrderButtonProps {
 
 const AddToOrderButton: React.FC<AddToOrderButtonProps> = ({ device }) => {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const orderState = useAppSelector((state) => state.order);
+  const user = useAppSelector((state) => state.user);
 
-  const handleAddToOrder = () => {
-    // Добавляем устройство в заявку
-    dispatch(addItem({
-      id: Date.now(), // Генерируем временный ID для элемента
-      deviceId: device.id!,
-      quantity: 1,
-      price: device.avg_data_rate || 0
-    }));
+  const handleAddToOrder = async () => {
+    if (!user.isAuthenticated) {
+      // Если пользователь не авторизован, перенаправляем на страницу входа
+      navigate('/login');
+      return;
+    }
+
+    try {
+      // Добавляем устройство в корзину на сервере
+      await dispatch(addDeviceToOrder(device.id!)).unwrap();
+      
+      // Обновляем информацию о корзине
+      await dispatch(fetchDraftOrder()).unwrap();
+      
+      // Переходим на страницу корзины
+      navigate('/order');
+    } catch (error) {
+      console.error('Ошибка при добавлении устройства:', error);
+    }
   };
-
-  // Проверяем, есть ли устройство в заявке
-  const isInOrder = orderState.items.some(item => item.deviceId === device.id);
 
   return (
     <Button
-      variant={isInOrder ? "success" : "outline-primary"}
+      variant="outline-primary"
       size="sm"
       onClick={handleAddToOrder}
       disabled={orderState.loading}
@@ -43,8 +54,6 @@ const AddToOrderButton: React.FC<AddToOrderButtonProps> = ({ device }) => {
           />
           <span className="ms-1">Добавление...</span>
         </>
-      ) : isInOrder ? (
-        "✓ В заявке"
       ) : (
         "Добавить в заявку"
       )}
