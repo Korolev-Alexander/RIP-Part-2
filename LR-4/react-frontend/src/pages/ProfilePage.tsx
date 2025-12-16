@@ -42,7 +42,8 @@ const ProfilePage: React.FC = () => {
             id: userData.id || 0,
             username: userData.username || '',
             email: '', // Email не возвращается в API
-            token: '' // Токен не используется, так как используется сессия
+            token: '', // Токен не используется, так как используется сессия
+            isModerator: userData.is_moderator || false
           }));
           setUsername(userData.username || '');
         }
@@ -119,7 +120,8 @@ const ProfilePage: React.FC = () => {
           id: response.data.id || 0,
           username: response.data.username || '',
           email: '', // Email не возвращается в API
-          token: '' // Токен не используется, так как используется сессия
+          token: '', // Токен не используется, так как используется сессия
+          isModerator: response.data.is_moderator || false
         }));
         
         setSuccess('Данные успешно обновлены');
