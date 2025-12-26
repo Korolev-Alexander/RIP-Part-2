@@ -1,10 +1,10 @@
 import type { SmartDevice, SmartOrder, Client, DeviceFilter } from '../types';
+import { dest_api } from '../target_config';
 
-// Для разработки: прокси через Vite
-// Для production и Tauri: прямой доступ к API серверу
-const API_BASE_URL = import.meta.env.PROD || import.meta.env.TAURI_ENV_PLATFORM
-  ? 'http://192.168.1.12:8080/api'  // Замените на ваш локальный IP
-  : '/api';
+// Используем настройки из target_config
+// В dev режиме: '/api' -> proxy на localhost:8080
+// В production: '/api' -> не работает на GitHub Pages, используются mock данные
+const API_BASE_URL = dest_api;
 
 export const api = {
   // ===== DEVICES =====
